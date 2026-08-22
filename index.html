@@ -1,0 +1,2594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Receipt to Invoice — Medical Expense Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+
+<style>
+/* ── Reset & Base ─────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --blue-50: #E6F1FB; --blue-100: #B5D4F4; --blue-400: #378ADD;
+  --blue-600: #185FA5; --blue-800: #0C447C; --blue-900: #042C53;
+  --teal-50: #E1F5EE; --teal-600: #0F6E56; --teal-800: #085041;
+  --green-50: #EAF3DE; --green-400: #639922; --green-600: #3B6D11; --green-800: #27500A;
+  --amber-50: #FAEEDA; --amber-400: #EF9F27; --amber-600: #854F0B; --amber-800: #633806;
+  --red-50: #FCEBEB; --red-600: #A32D2D; --red-800: #791F1F;
+  --gray-50: #F1EFE8; --gray-100: #D3D1C7; --gray-200: #B4B2A9;
+  --gray-400: #888780; --gray-600: #5F5E5A; --gray-800: #444441; --gray-900: #2C2C2A;
+  --coral-50: #FAECE7; --coral-600: #993C1D;
+  --white: #ffffff;
+  --bg: #F4F6F9;
+  --card: #ffffff;
+  --border: #E2E5EA;
+  --border-mid: #C8CDD6;
+  --text: #1A1D23;
+  --text-muted: #6B7280;
+  --text-light: #9CA3AF;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.05);
+  --shadow-lg: 0 10px 30px rgba(0,0,0,0.10), 0 4px 8px rgba(0,0,0,0.06);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+}
+
+html { font-size: 15px; }
+body {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.6;
+}
+
+/* ── Layout ───────────────────────────────────────────────────── */
+.app-shell { display: flex; flex-direction: column; min-height: 100vh; }
+
+.topbar {
+  background: var(--blue-900);
+  color: white;
+  padding: 0 2rem;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+.topbar-brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; letter-spacing: -0.01em; }
+.topbar-brand i { font-size: 22px; opacity: 0.9; }
+.topbar-sub { font-size: 12px; opacity: 0.6; font-weight: 400; }
+.topbar-right { display: flex; align-items: center; gap: 16px; }
+.topbar-badge { background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; padding: 3px 12px; font-size: 12px; font-weight: 500; }
+
+.main { flex: 1; max-width: 960px; margin: 0 auto; width: 100%; padding: 2rem 1.5rem 4rem; }
+
+/* ── Step progress bar ────────────────────────────────────────── */
+.step-progress { display: flex; align-items: center; margin-bottom: 2.5rem; }
+.step-item { display: flex; align-items: center; gap: 10px; flex: 1; }
+.step-item:last-child { flex: 0; }
+.step-circle {
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 2px solid var(--border-mid);
+  background: var(--white);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 600; color: var(--text-muted);
+  flex-shrink: 0; transition: all 0.25s;
+}
+.step-circle.active { border-color: var(--blue-600); background: var(--blue-600); color: white; box-shadow: 0 0 0 4px var(--blue-50); }
+.step-circle.done { border-color: var(--green-600); background: var(--green-600); color: white; }
+.step-circle.done::after { content: ''; }
+.step-label { font-size: 13px; font-weight: 500; color: var(--text-muted); white-space: nowrap; }
+.step-label.active { color: var(--blue-800); font-weight: 600; }
+.step-label.done { color: var(--green-600); }
+.step-connector { flex: 1; height: 2px; background: var(--border); margin: 0 12px; border-radius: 2px; transition: background 0.25s; }
+.step-connector.done { background: var(--green-400); }
+
+/* ── Card ─────────────────────────────────────────────────────── */
+.card {
+  background: var(--card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  padding: 1.75rem;
+  margin-bottom: 1.25rem;
+}
+.card-title {
+  font-size: 16px; font-weight: 600; margin-bottom: 1.25rem;
+  display: flex; align-items: center; gap: 8px; color: var(--text);
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.card-title i { font-size: 18px; color: var(--blue-600); }
+
+/* ── Upload zone ──────────────────────────────────────────────── */
+.upload-zone {
+  border: 2px dashed var(--border-mid);
+  border-radius: var(--radius-lg);
+  padding: 3rem 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--gray-50);
+  position: relative;
+}
+.upload-zone:hover, .upload-zone.drag {
+  border-color: var(--blue-400);
+  background: var(--blue-50);
+}
+.upload-icon {
+  width: 64px; height: 64px; border-radius: 50%;
+  background: var(--blue-50); border: 2px solid var(--blue-100);
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 1.25rem;
+}
+.upload-icon i { font-size: 28px; color: var(--blue-600); }
+.upload-zone h3 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+.upload-zone p { color: var(--text-muted); font-size: 14px; }
+.upload-zone .browse-link { color: var(--blue-600); text-decoration: underline; cursor: pointer; font-weight: 500; }
+.upload-zone input[type="file"] { display: none; }
+
+/* ── Receipt grid ─────────────────────────────────────────────── */
+.receipt-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 14px;
+  margin-top: 1.5rem;
+}
+.receipt-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--white);
+  position: relative;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.15s;
+}
+.receipt-card:hover { box-shadow: var(--shadow-md); }
+.receipt-thumb { width: 100%; height: 120px; object-fit: cover; display: block; }
+.receipt-placeholder {
+  width: 100%; height: 120px;
+  background: var(--gray-50);
+  display: flex; align-items: center; justify-content: center;
+}
+.receipt-placeholder i { font-size: 30px; color: var(--gray-400); }
+.receipt-meta { padding: 8px 10px; }
+.receipt-name { font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.receipt-status { font-size: 11px; margin-top: 3px; }
+.s-pending { color: var(--amber-600); }
+.s-analyzing { color: var(--blue-600); }
+.s-done { color: var(--green-600); }
+.s-error { color: var(--red-600); }
+.receipt-remove {
+  position: absolute; top: 6px; right: 6px;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: rgba(0,0,0,0.55); border: none;
+  color: white; cursor: pointer; font-size: 12px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s;
+}
+.receipt-remove:hover { background: var(--red-600); }
+.receipt-status-overlay {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(12,68,124,0.55);
+  display: flex; align-items: center; justify-content: center;
+}
+.receipt-status-overlay i { font-size: 26px; color: white; }
+
+/* ── Buttons ──────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 18px; border-radius: var(--radius-md);
+  border: 1px solid var(--border-mid);
+  background: var(--white);
+  color: var(--text);
+  cursor: pointer; font-size: 14px; font-weight: 500;
+  transition: all 0.15s; text-decoration: none; font-family: inherit;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--gray-50); border-color: var(--gray-200); }
+.btn:active { transform: scale(0.98); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
+
+.btn-primary { background: var(--blue-800); border-color: var(--blue-800); color: white; box-shadow: var(--shadow-sm); }
+.btn-primary:hover { background: var(--blue-600); border-color: var(--blue-600); }
+
+.btn-success { background: var(--green-600); border-color: var(--green-600); color: white; box-shadow: var(--shadow-sm); }
+.btn-success:hover { background: var(--green-800); border-color: var(--green-800); }
+
+.btn-email { background: var(--blue-600); border-color: var(--blue-600); color: white; box-shadow: var(--shadow-sm); }
+.btn-email:hover { background: var(--blue-800); border-color: var(--blue-800); }
+
+.btn-danger { background: white; border-color: var(--red-600); color: var(--red-600); }
+.btn-danger:hover { background: var(--red-50); }
+
+.btn-lg { padding: 12px 24px; font-size: 15px; border-radius: var(--radius-md); }
+.btn-sm { padding: 5px 11px; font-size: 13px; border-radius: var(--radius-sm); }
+.btn-icon { padding: 7px; border-radius: var(--radius-sm); }
+
+.actions-bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 1.5rem; }
+
+/* ── Alerts ───────────────────────────────────────────────────── */
+.alert {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 16px; border-radius: var(--radius-md);
+  font-size: 13.5px; margin-bottom: 1.25rem; line-height: 1.5;
+}
+.alert i { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+.alert-info { background: var(--blue-50); color: var(--blue-800); border: 1px solid var(--blue-100); }
+.alert-success { background: var(--green-50); color: var(--green-800); border: 1px solid #C0DD97; }
+.alert-warning { background: var(--amber-50); color: var(--amber-800); border: 1px solid #FAC775; }
+
+/* ── Expense table ────────────────────────────────────────────── */
+.table-wrap { overflow-x: auto; border-radius: var(--radius-md); border: 1px solid var(--border); }
+table.exp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.exp-table th {
+  background: var(--gray-50); padding: 10px 12px;
+  text-align: left; font-weight: 600; font-size: 12px;
+  color: var(--text-muted); border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+table.exp-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+table.exp-table tr:last-child td { border-bottom: none; }
+table.exp-table tr:hover td { background: var(--gray-50); }
+table.exp-table input, table.exp-table select {
+  width: 100%; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 5px 8px;
+  font-size: 13px; font-family: inherit;
+  background: var(--white); color: var(--text);
+  transition: border-color 0.15s;
+}
+table.exp-table input:focus, table.exp-table select:focus {
+  outline: none; border-color: var(--blue-400);
+  box-shadow: 0 0 0 3px rgba(55,138,221,0.15);
+}
+table.exp-table input + input { margin-top: 4px; }
+
+/* ── GL Code badges ───────────────────────────────────────────── */
+.gl-badge {
+  display: inline-block; font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: 20px; margin-top: 3px;
+  font-family: 'DM Mono', monospace;
+}
+.gl-badge-coded { background: var(--blue-50); color: var(--blue-800); border: 1px solid var(--blue-100); }
+.gl-badge-uncoded { background: var(--amber-50); color: var(--amber-800); border: 1px solid var(--amber-400); }
+
+/* ── Total bar ────────────────────────────────────────────────── */
+.total-bar { display: flex; justify-content: flex-end; margin-top: 1.25rem; }
+.total-box {
+  background: var(--blue-900); color: white;
+  border-radius: var(--radius-md); padding: 14px 24px; text-align: right;
+  box-shadow: var(--shadow-md);
+}
+.total-box .total-label { font-size: 12px; opacity: 0.7; font-weight: 500; }
+.total-box .total-amount { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
+
+/* ── Invoice meta form ────────────────────────────────────────── */
+.meta-grid { display: grid; gap: 16px; }
+.meta-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+.meta-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+.field {
+  display: flex; flex-direction: column; gap: 5px;
+}
+.field label {
+  font-size: 12px; font-weight: 600; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.04em;
+  display: flex; align-items: center; gap: 6px;
+}
+.field input, .field select, .field textarea {
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-md); padding: 10px 13px;
+  font-size: 14px; font-family: inherit;
+  background: var(--white); color: var(--text);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.field input:focus, .field select:focus, .field textarea:focus {
+  outline: none; border-color: var(--blue-400);
+  box-shadow: 0 0 0 3px rgba(55,138,221,0.15);
+}
+.field input[readonly] {
+  background: var(--gray-50); color: var(--text-muted);
+  cursor: default; border-style: dashed;
+}
+.field input.required-field {
+  border-color: var(--blue-400);
+  background: var(--blue-50);
+}
+.field input.required-field:focus {
+  border-color: var(--blue-600);
+  background: white;
+}
+.field-note { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+
+/* Field meta badges */
+.fbadge {
+  font-size: 10px; font-weight: 600; padding: 2px 7px;
+  border-radius: 20px; text-transform: none; letter-spacing: 0;
+}
+.fbadge-saved { background: var(--green-50); color: var(--green-600); border: 1px solid #C0DD97; }
+.fbadge-fixed { background: var(--blue-50); color: var(--blue-600); border: 1px solid var(--blue-100); }
+.fbadge-default { background: var(--amber-50); color: var(--amber-600); border: 1px solid #FAC775; }
+
+/* Name input row */
+.name-input-row { display: flex; gap: 8px; align-items: center; }
+.name-input-row input { flex: 1; }
+
+/* ── Name capture banner ──────────────────────────────────────── */
+.name-banner {
+  background: var(--amber-50); border: 1px solid var(--amber-400);
+  border-radius: var(--radius-lg); padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+  display: flex; align-items: flex-start; gap: 14px;
+}
+.name-banner-icon {
+  width: 42px; height: 42px; border-radius: 50%;
+  background: white; border: 1px solid var(--amber-400);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.name-banner-icon i { font-size: 20px; color: var(--amber-600); }
+.name-banner-body { flex: 1; }
+.name-banner-body h3 { font-size: 14px; font-weight: 600; color: var(--amber-800); margin-bottom: 4px; }
+.name-banner-body p { font-size: 13px; color: var(--amber-600); margin-bottom: 12px; }
+.name-banner-row { display: flex; gap: 8px; }
+.name-banner-row input {
+  flex: 1; border: 1px solid var(--amber-400); border-radius: var(--radius-md);
+  padding: 9px 12px; font-size: 14px; font-family: inherit;
+  background: white; color: var(--text);
+}
+.name-banner-row input:focus { outline: none; border-color: var(--amber-600); box-shadow: 0 0 0 3px rgba(239,159,39,0.2); }
+
+/* ── Summary list (step 3) ────────────────────────────────────── */
+.summary-list { border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+.summary-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 14px; border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+.summary-item:last-child { border-bottom: none; }
+.summary-item:hover { background: var(--gray-50); }
+.thumb-sm {
+  width: 38px; height: 38px; object-fit: cover;
+  border-radius: var(--radius-sm); border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.thumb-placeholder-sm {
+  width: 38px; height: 38px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--gray-50);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.thumb-placeholder-sm i { font-size: 16px; color: var(--gray-400); }
+.summary-details { flex: 1; min-width: 0; }
+.summary-vendor { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.summary-meta { font-size: 12px; color: var(--text-muted); margin-top: 2px; display: flex; gap: 8px; flex-wrap: wrap; }
+.summary-amount { font-size: 15px; font-weight: 600; white-space: nowrap; }
+
+/* ── Email panel ──────────────────────────────────────────────── */
+.email-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-top: 1.5rem;
+  box-shadow: var(--shadow-md);
+}
+.email-panel-header {
+  background: var(--blue-800); color: white;
+  padding: 14px 18px;
+  display: flex; align-items: center; gap: 10px;
+  font-weight: 600; font-size: 14px;
+}
+.email-panel-header i { font-size: 18px; }
+.email-panel-body { padding: 1.25rem; background: white; }
+.email-field { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.email-field label { font-size: 12px; font-weight: 600; color: var(--text-muted); min-width: 64px; text-align: right; text-transform: uppercase; letter-spacing: 0.04em; }
+.email-field input, .email-field textarea {
+  flex: 1; border: 1px solid var(--border-mid); border-radius: var(--radius-md);
+  padding: 8px 12px; font-size: 13.5px; font-family: inherit;
+  background: white; color: var(--text);
+}
+.email-field input:focus, .email-field textarea:focus { outline: none; border-color: var(--blue-400); box-shadow: 0 0 0 3px rgba(55,138,221,0.15); }
+.email-field input[readonly] { background: var(--gray-50); color: var(--text-muted); border-style: dashed; cursor: default; }
+.email-field textarea { resize: vertical; min-height: 90px; }
+.email-note {
+  background: var(--gray-50); border-radius: var(--radius-md);
+  padding: 10px 14px; font-size: 13px; color: var(--text-muted);
+  line-height: 1.55; margin: 4px 0 14px;
+  display: flex; gap: 8px; align-items: flex-start;
+}
+.email-note i { font-size: 15px; flex-shrink: 0; margin-top: 1px; color: var(--blue-600); }
+.copy-toast { font-size: 13px; color: var(--green-600); display: none; align-items: center; gap: 5px; font-weight: 500; }
+.send-ok { background: var(--green-50); border: 1px solid #C0DD97; border-radius: var(--radius-md); padding: 10px 14px; font-size: 13px; color: var(--green-800); margin-top: 10px; display: none; }
+
+/* ── Spinner ──────────────────────────────────────────────────── */
+.spinner {
+  display: inline-block;
+  width: 15px; height: 15px;
+  border: 2.5px solid rgba(255,255,255,0.35);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+  flex-shrink: 0;
+}
+.spinner-blue { border-color: rgba(24,95,165,0.25); border-top-color: var(--blue-600); }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.progress-label { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--blue-700); font-weight: 500; }
+
+/* ── Divider ──────────────────────────────────────────────────── */
+.divider { height: 1px; background: var(--border); margin: 1.5rem 0; }
+
+/* ── PDF preview ──────────────────────────────────────────────── */
+.pdf-preview-wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-top: 1.5rem;
+  box-shadow: var(--shadow-md);
+  background: var(--gray-50);
+  min-height: 360px;
+  display: flex; align-items: center; justify-content: center;
+}
+.pdf-loading { text-align: center; padding: 3rem; }
+.pdf-loading p { font-size: 14px; color: var(--text-muted); margin-top: 12px; }
+
+/* ── Hidden ───────────────────────────────────────────────────── */
+.hidden { display: none !important; }
+
+/* ── Diagnostics ──────────────────────────────────────────────── */
+.diag-box { border-radius: 10px; padding: 11px 14px; font-size: 13px; line-height: 1.55; margin-top: 10px; }
+.diag-info { background: #E6F1FB; color: #0C447C; border: 1px solid #B5D4F4; }
+.diag-ok   { background: #EAF3DE; color: #27500A; border: 1px solid #C0DD97; }
+.diag-err  { background: #FCEBEB; color: #791F1F; border: 1px solid #F09595; word-break: break-word; }
+
+/* ── Footer ───────────────────────────────────────────────────── */
+.footer {
+  background: var(--blue-900); color: rgba(255,255,255,0.55);
+  text-align: center; padding: 1rem;
+  font-size: 12px; margin-top: auto;
+}
+
+/* ── Responsive ───────────────────────────────────────────────── */
+@media (max-width: 680px) {
+  .topbar { padding: 0 1rem; }
+  .topbar-sub, .topbar-badge { display: none; }
+  .main { padding: 1.25rem 1rem 3rem; }
+  .meta-grid.cols-2, .meta-grid.cols-3 { grid-template-columns: 1fr; }
+  .step-label { display: none; }
+  .step-connector { margin: 0 8px; }
+  .card { padding: 1.25rem; }
+  .btn-lg { padding: 10px 18px; font-size: 14px; }
+}
+</style>
+</head>
+
+<body>
+<div class="app-shell">
+
+  <!-- API Key Modal -->
+  <div id="apiModal" style="display:none;position:fixed;inset:0;background:rgba(4,44,83,0.72);z-index:9999;align-items:center;justify-content:center;padding:1rem">
+    <div style="background:white;border-radius:16px;padding:2rem;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.35)">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:1.25rem">
+        <div style="width:46px;height:46px;border-radius:50%;background:#E6F1FB;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <i class="ti ti-key" style="font-size:22px;color:#0C447C" aria-hidden="true"></i>
+        </div>
+        <div>
+          <h2 style="font-size:17px;font-weight:600;margin:0;color:#1A1D23">Anthropic API Key</h2>
+          <p style="font-size:13px;color:#6B7280;margin:3px 0 0">Required for AI receipt reading</p>
+        </div>
+      </div>
+      <p style="font-size:13.5px;color:#374151;margin-bottom:1.25rem;line-height:1.6">
+        This app uses Claude AI to read your receipt photos. Your key is stored only in <strong>this browser</strong> (localStorage) and sent only to Anthropic — never anywhere else.
+      </p>
+      <div style="margin-bottom:1rem">
+        <label style="font-size:12px;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:0.04em;display:block;margin-bottom:6px">Your API Key</label>
+        <input id="apiKeyInput" type="password" placeholder="sk-ant-api03-..." autocomplete="off" spellcheck="false"
+          style="width:100%;border:1.5px solid #C8CDD6;border-radius:10px;padding:11px 14px;font-size:14px;font-family:'DM Mono',monospace;color:#111;outline:none"
+          onfocus="this.style.borderColor='#378ADD'" onblur="this.style.borderColor='#C8CDD6'"
+          onkeydown="if(event.key==='Enter')saveApiKey()">
+        <p style="font-size:12px;color:#9CA3AF;margin-top:6px;line-height:1.5">
+          Get your key at <a href="https://console.anthropic.com" target="_blank" style="color:#185FA5;font-weight:500">console.anthropic.com</a> → API Keys. Usage is billed per receipt (~$0.01 each).
+        </p>
+      </div>
+      <div id="apiKeyError" style="display:none;background:#FCEBEB;border:1px solid #F09595;border-radius:8px;padding:10px 13px;font-size:13px;color:#791F1F;margin-bottom:1rem;line-height:1.5"></div>
+      <div style="display:flex;gap:10px">
+        <button onclick="saveApiKey()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:11px 18px;border-radius:10px;border:none;background:#0C447C;color:white;cursor:pointer;font-size:14px;font-weight:500;font-family:inherit">
+          <i class="ti ti-check" aria-hidden="true"></i> Save &amp; continue
+        </button>
+        <button id="apiModalCancel" onclick="closeApiModal()" style="display:none;padding:11px 18px;border-radius:10px;border:1.5px solid #C8CDD6;background:white;cursor:pointer;font-size:14px;font-weight:500;font-family:inherit;color:#374151">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <i class="ti ti-receipt-2" aria-hidden="true"></i>
+      Receipt to Invoice
+      <span class="topbar-sub">Medical Expense Reports</span>
+    </div>
+    <div class="topbar-right">
+      <span id="saveIndicator" style="font-size:12px;color:#8FCB8F;opacity:0;transition:opacity 0.4s;font-weight:500"></span>
+      <span class="topbar-badge" id="topbarName">Loading...</span>
+      <button id="apiKeyBtn" onclick="openApiModal(true)"
+        title="Manage API key"
+        style="background:rgba(255,255,255,0.13);border:1px solid rgba(255,255,255,0.28);border-radius:8px;color:white;cursor:pointer;font-size:12px;font-family:inherit;font-weight:500;padding:5px 12px;display:flex;align-items:center;gap:5px;transition:background 0.15s">
+        <i class="ti ti-key" style="font-size:14px" aria-hidden="true"></i>
+        <span id="apiKeyStatus">No key set</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="main">
+
+    <!-- Name capture banner -->
+    <div class="name-banner hidden" id="nameBanner">
+      <div class="name-banner-icon"><i class="ti ti-user-circle" aria-hidden="true"></i></div>
+      <div class="name-banner-body">
+        <h3>Welcome! Let's save your name.</h3>
+        <p>Enter your name once and this app will remember it for every future expense report.</p>
+        <div class="name-banner-row">
+          <input id="bannerNameInput" placeholder="Your full name" onkeydown="if(event.key==='Enter')saveBannerName()">
+          <button class="btn btn-primary" onclick="saveBannerName()">
+            <i class="ti ti-device-floppy" aria-hidden="true"></i> Save &amp; continue
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step progress -->
+    <div class="step-progress" id="stepProgress">
+      <div class="step-item">
+        <div class="step-circle active" id="sc1">1</div>
+        <div class="step-label active" id="sl1">Upload receipts</div>
+      </div>
+      <div class="step-connector" id="conn1"></div>
+      <div class="step-item">
+        <div class="step-circle" id="sc2">2</div>
+        <div class="step-label" id="sl2">Review &amp; code</div>
+      </div>
+      <div class="step-connector" id="conn2"></div>
+      <div class="step-item">
+        <div class="step-circle" id="sc3">3</div>
+        <div class="step-label" id="sl3">Invoice details</div>
+      </div>
+      <div class="step-connector" id="conn3"></div>
+      <div class="step-item">
+        <div class="step-circle" id="sc4">4</div>
+        <div class="step-label" id="sl4">Export PDF</div>
+      </div>
+    </div>
+
+    <!-- ── STEP 1: Upload ──────────────────────────────────────── -->
+    <div id="step1">
+      <div class="card">
+        <div class="card-title"><i class="ti ti-camera-up" aria-hidden="true"></i> Upload Receipt Photos</div>
+
+        <div class="upload-zone" id="dropzone">
+          <div class="upload-icon"><i class="ti ti-photo-up" aria-hidden="true"></i></div>
+          <h3>Drag &amp; drop receipt photos here</h3>
+          <p style="margin-top:6px">or <span class="browse-link" onclick="document.getElementById('fileInput').click()">browse your files</span></p>
+          <p style="margin-top:8px;font-size:12px;color:var(--text-light)">JPG · PNG · HEIC · PDF &nbsp;—&nbsp; Multiple files accepted</p>
+          <input type="file" id="fileInput" accept="image/*,.pdf" multiple>
+        </div>
+
+        <div id="receiptGrid" class="receipt-grid hidden"></div>
+
+        <div class="actions-bar" id="step1Actions" style="display:none">
+          <button class="btn btn-primary btn-lg" id="analyzeBtn" onclick="analyzeAll()">
+            <i class="ti ti-cpu" aria-hidden="true"></i> Analyze all receipts with AI
+          </button>
+          <button class="btn" onclick="document.getElementById('fileInput').click()">
+            <i class="ti ti-plus" aria-hidden="true"></i> Add more
+          </button>
+          <span class="progress-label hidden" id="analyzeProgress">
+            <span class="spinner spinner-blue"></span>
+            <span id="progressText">Analyzing...</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Connection test (always visible) -->
+      <div style="margin-top:1.25rem;padding:1rem 1.25rem;background:var(--gray-50);border-radius:var(--radius-md);border:1px solid var(--border)">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+          <div style="font-size:13px;color:var(--text-muted)">
+            <i class="ti ti-plug" style="font-size:15px;vertical-align:-2px;margin-right:4px" aria-hidden="true"></i>
+            Not sure if your API key is working? Test the connection first.
+          </div>
+          <button id="testConnBtn" class="btn btn-sm" onclick="testConnection()">
+            <i class="ti ti-wifi" aria-hidden="true"></i> Test API connection
+          </button>
+        </div>
+        <div id="testConnOut" class="diag-box diag-info" style="display:none"></div>
+      </div>
+
+      <div class="alert alert-info" style="margin-top:1.25rem;margin-bottom:0">
+        <i class="ti ti-info-circle" aria-hidden="true"></i>
+        <div>AI will read each receipt image and extract vendor, date, amount, and suggest the correct GL code automatically based on your expense categories.</div>
+      </div>
+    </div>
+
+    <!-- ── STEP 2: Review & code ───────────────────────────────── -->
+    <div id="step2" class="hidden">
+      <div class="card">
+        <div class="card-title"><i class="ti ti-table-check" aria-hidden="true"></i> Review &amp; Code Expenses</div>
+
+        <div class="alert alert-info" style="margin-bottom:1rem">
+          <i class="ti ti-sparkles" aria-hidden="true"></i>
+          <div>AI has pre-filled all fields below. Review each line, correct any errors, and assign a GL code to any items marked <strong>needs code</strong>.</div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="exp-table">
+            <thead>
+              <tr>
+                <th style="width:44px">Photo</th>
+                <th>Vendor &amp; Description</th>
+                <th style="width:126px">Date</th>
+                <th style="width:96px">Amount ($)</th>
+                <th style="width:200px">GL Code</th>
+                <th style="width:36px"></th>
+              </tr>
+            </thead>
+            <tbody id="expenseBody"></tbody>
+          </table>
+        </div>
+
+        <div class="total-bar">
+          <div class="total-box">
+            <div class="total-label">Total expenses</div>
+            <div class="total-amount" id="totalAmount">$0.00</div>
+          </div>
+        </div>
+
+        <div class="actions-bar">
+          <button class="btn" onclick="goStep(1)"><i class="ti ti-arrow-left" aria-hidden="true"></i> Back</button>
+          <button class="btn btn-primary" onclick="goStep(3)">Continue to invoice details <i class="ti ti-arrow-right" aria-hidden="true"></i></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── STEP 3: Invoice details ─────────────────────────────── -->
+    <div id="step3" class="hidden">
+      <div class="card">
+        <div class="card-title"><i class="ti ti-file-invoice" aria-hidden="true"></i> Invoice Details</div>
+
+        <div class="meta-grid cols-2" style="margin-bottom:16px">
+          <div class="field">
+            <label>Invoice number</label>
+            <input id="invNum" value="INV-001">
+          </div>
+          <div class="field">
+            <label>Invoice date</label>
+            <input id="invDate" type="date">
+          </div>
+        </div>
+
+        <div class="meta-grid cols-3" style="margin-bottom:16px">
+          <div class="field">
+            <label>
+              Submitted by
+              <span class="fbadge fbadge-saved" id="nameBadge" style="display:none">remembered</span>
+            </label>
+            <div class="name-input-row">
+              <input id="invName" placeholder="Your full name">
+              <button class="btn btn-sm btn-icon hidden" id="editNameBtn" onclick="editName()" title="Edit saved name" aria-label="Edit name">
+                <i class="ti ti-pencil" aria-hidden="true"></i>
+              </button>
+            </div>
+            <span class="field-note hidden" id="nameNote">Saved — won't ask again next time</span>
+          </div>
+
+          <div class="field">
+            <label>Department <span class="fbadge fbadge-fixed">always Medical</span></label>
+            <input id="invDept" value="Medical" readonly>
+          </div>
+
+          <div class="field">
+            <label>Approver <span class="fbadge fbadge-default">default</span></label>
+            <input id="invTo" value="Kim Kranz" placeholder="Approver name">
+            <span class="field-note">Change if submitting to someone else</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Trip / expense purpose <span style="color:var(--red-600);font-weight:400;font-size:11px;text-transform:none;letter-spacing:0">* required each invoice</span></label>
+          <input id="invPurpose" class="required-field" placeholder="e.g. Chicago annual conference, Q3 client site visit, Phoenix training seminar...">
+        </div>
+      </div>
+
+      <!-- Honorarium -->
+      <div class="card">
+        <div class="card-title"><i class="ti ti-cash" aria-hidden="true"></i> Honorarium <span style="font-size:12px;font-weight:400;color:var(--text-muted);margin-left:4px">GL Code 5120 — optional</span></div>
+        <div class="meta-grid cols-3" style="align-items:end">
+          <div class="field">
+            <label>Number of days</label>
+            <input id="honorDays" type="number" min="0" step="1" placeholder="0" oninput="refreshTotal()">
+          </div>
+          <div class="field">
+            <label>Daily rate ($)</label>
+            <input id="honorRate" type="number" min="0" step="0.01" placeholder="0.00" oninput="refreshTotal()">
+          </div>
+          <div class="field">
+            <label>Honorarium total</label>
+            <input id="honorTotal" readonly style="font-weight:600;background:var(--gray-50);border-style:dashed" placeholder="$0.00">
+          </div>
+        </div>
+        <p class="field-note" style="margin-top:8px">Leave days or rate blank to exclude honorarium from this invoice.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><i class="ti ti-list-check" aria-hidden="true"></i> Expense Summary</div>
+        <div class="summary-list" id="summaryList"></div>
+        <div class="total-bar">
+          <div class="total-box">
+            <div class="total-label">Total to reimburse</div>
+            <div class="total-amount" id="totalAmount2">$0.00</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions-bar">
+        <button class="btn" onclick="goStep(2)"><i class="ti ti-arrow-left" aria-hidden="true"></i> Back</button>
+        <button class="btn btn-success btn-lg" onclick="goStep(4)">
+          <i class="ti ti-file-export" aria-hidden="true"></i> Generate PDF Invoice
+        </button>
+      </div>
+    </div>
+
+    <!-- ── STEP 4: Export ──────────────────────────────────────── -->
+    <div id="step4" class="hidden">
+
+      <div class="alert alert-success">
+        <i class="ti ti-circle-check" aria-hidden="true"></i>
+        <div>Your expense report PDF is ready. Download it and email it to Stampli for processing.</div>
+      </div>
+
+      <div class="actions-bar" style="margin-top:0">
+        <button class="btn btn-primary btn-lg" onclick="downloadPDF()">
+          <i class="ti ti-download" aria-hidden="true"></i> Download PDF
+        </button>
+        <a id="pdfOpenLink" href="#" target="_blank" class="btn btn-lg" style="display:none">
+          <i class="ti ti-external-link" aria-hidden="true"></i> Open PDF
+        </a>
+        <button class="btn btn-email btn-lg" onclick="toggleEmailPanel()">
+          <i class="ti ti-send" aria-hidden="true"></i> Email to Stampli
+        </button>
+        <button class="btn" onclick="startNew()">
+          <i class="ti ti-plus" aria-hidden="true"></i> New invoice
+        </button>
+      </div>
+      <p id="mobileDownloadNote" style="display:none;font-size:13px;color:var(--text-muted);margin-top:8px">
+        <i class="ti ti-info-circle" style="vertical-align:-2px"></i>
+        On mobile: tap <strong>Open PDF</strong> to view it, then use your browser's share/export button to save or print.
+      </p>
+      <p id="pdfSizeNote" style="display:none;font-size:13px;color:var(--amber-800);background:var(--amber-50);border:1px solid var(--amber-400);border-radius:8px;padding:9px 13px;margin-top:10px;line-height:1.5"></p>
+
+      <!-- Email panel -->
+      <div class="email-panel hidden" id="emailPanel">
+        <div class="email-panel-header">
+          <i class="ti ti-mail-forward" aria-hidden="true"></i>
+          Send expense report to Stampli
+        </div>
+        <div class="email-panel-body">
+          <div class="email-field">
+            <label>To</label>
+            <input id="emailTo" value="usagym@mystampli.com" readonly>
+          </div>
+          <div class="email-field">
+            <label>From</label>
+            <input id="emailFrom" placeholder="your.email@hospital.com">
+          </div>
+          <div class="email-field">
+            <label>Subject</label>
+            <input id="emailSubject">
+          </div>
+          <div class="email-field" style="align-items:flex-start">
+            <label style="margin-top:9px">Message</label>
+            <textarea id="emailBody"></textarea>
+          </div>
+          <div class="email-note">
+            <i class="ti ti-info-circle" aria-hidden="true"></i>
+            <span><strong>How to send:</strong> Click "Open in mail app" below — your default email client (Outlook, Apple Mail, Gmail) will open with everything pre-filled. Then <strong>attach the downloaded PDF</strong> and hit send. Browsers cannot attach files to emails automatically for security reasons.</span>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <a href="#" class="btn btn-email" onclick="openMailto(event)">
+              <i class="ti ti-mail" aria-hidden="true"></i> Open in mail app
+            </a>
+            <button class="btn" onclick="copyEmail()">
+              <i class="ti ti-copy" aria-hidden="true"></i> Copy email address
+            </button>
+            <span class="copy-toast" id="copyToast"><i class="ti ti-check" aria-hidden="true"></i> Copied!</span>
+          </div>
+          <div class="send-ok" id="sendOk"><i class="ti ti-circle-check" style="vertical-align:-2px;margin-right:4px"></i> Mail app launched — attach the PDF then send!</div>
+        </div>
+      </div>
+
+      <!-- PDF preview -->
+      <div class="pdf-preview-wrap" id="pdfPreview">
+        <div class="pdf-loading">
+          <div class="spinner spinner-blue" style="width:28px;height:28px;border-width:3px;margin:0 auto"></div>
+          <p>Generating your PDF invoice...</p>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <footer class="footer">
+    Medical Expense Report Tool &nbsp;·&nbsp; All data stays on your device &nbsp;·&nbsp; Powered by Claude AI
+  </footer>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+/* ── Constants ─────────────────────────────────────────────────── */
+const GL_CODES = {
+  '5020': 'Hotel / Lodging',
+  '5030': 'Meals & Dining',
+  '5055': 'Travel (rideshare, taxi, parking, gas, baggage, mileage)',
+  '5120': 'Honorarium',
+  '5510': 'International Phone Plan',
+  '5590': 'Supplies',
+  'OTHER': 'Other (specify below)'
+};
+
+// IRS standard mileage rate — historical table with date-matching, so every
+// mileage document uses the rate that was actually in effect on ITS OWN date,
+// not just whatever the rate happens to be today. This replaces a single
+// hardcoded constant that missed the July 1, 2026 mid-year increase
+// (72.5¢ → 76¢) because it only got updated once a year, in January.
+const MILEAGE_RATE_HISTORY = [
+  { effectiveDate: '2010-01-01', endDate: '2010-12-31', business: 0.50,  source: 'IRS Notice 2009-89' },
+  { effectiveDate: '2011-01-01', endDate: '2011-06-30', business: 0.51,  source: 'IRS Notice 2010-88' },
+  { effectiveDate: '2011-07-01', endDate: '2011-12-31', business: 0.555, source: 'IRS Announcement 2011-40 (mid-year)' },
+  { effectiveDate: '2012-01-01', endDate: '2012-12-31', business: 0.555, source: 'IRS Notice 2012-1' },
+  { effectiveDate: '2013-01-01', endDate: '2013-12-31', business: 0.565, source: 'IRS Notice 2012-72' },
+  { effectiveDate: '2014-01-01', endDate: '2014-12-31', business: 0.56,  source: 'IRS Notice 2013-80' },
+  { effectiveDate: '2015-01-01', endDate: '2015-12-31', business: 0.575, source: 'IRS Notice 2014-79' },
+  { effectiveDate: '2016-01-01', endDate: '2016-12-31', business: 0.54,  source: 'IRS Notice 2015-87' },
+  { effectiveDate: '2017-01-01', endDate: '2017-12-31', business: 0.535, source: 'IRS Notice 2016-79' },
+  { effectiveDate: '2018-01-01', endDate: '2018-12-31', business: 0.545, source: 'IRS Notice 2018-3' },
+  { effectiveDate: '2019-01-01', endDate: '2019-12-31', business: 0.58,  source: 'IRS Notice 2019-2' },
+  { effectiveDate: '2020-01-01', endDate: '2020-12-31', business: 0.575, source: 'IRS Notice 2020-5' },
+  { effectiveDate: '2021-01-01', endDate: '2021-12-31', business: 0.56,  source: 'IRS Notice 2021-2' },
+  { effectiveDate: '2022-01-01', endDate: '2022-06-30', business: 0.585, source: 'IRS Notice 2022-3' },
+  { effectiveDate: '2022-07-01', endDate: '2022-12-31', business: 0.625, source: 'IRS Announcement 2022-13 (mid-year)' },
+  { effectiveDate: '2023-01-01', endDate: '2023-12-31', business: 0.655, source: 'IRS Notice 2023-3' },
+  { effectiveDate: '2024-01-01', endDate: '2024-12-31', business: 0.67,  source: 'IRS Notice 2024-8' },
+  { effectiveDate: '2025-01-01', endDate: '2025-12-31', business: 0.70,  source: 'IRS Notice 2025-5' },
+  { effectiveDate: '2026-01-01', endDate: '2026-06-30', business: 0.725, source: 'IRS Notice 2026-10' },
+  { effectiveDate: '2026-07-01', endDate: null,          business: 0.76,  source: 'IRS Announcement 2026-11 (mid-year)' },
+];
+
+function getRateForDate(dateStr) {
+  const d = (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) ? dateStr : new Date().toISOString().split('T')[0];
+  const travel = new Date(d + 'T00:00:00');
+  for (let i = MILEAGE_RATE_HISTORY.length - 1; i >= 0; i--) {
+    const p = MILEAGE_RATE_HISTORY[i];
+    const start = new Date(p.effectiveDate + 'T00:00:00');
+    const end = p.endDate ? new Date(p.endDate + 'T23:59:59') : null;
+    if (travel >= start && (!end || travel <= end)) return { ...p, matchedDate: d };
+  }
+  return { ...MILEAGE_RATE_HISTORY[0], matchedDate: d }; // predates table — best available approximation
+}
+
+// Kept for backward compatibility with the rest of the app, which references
+// IRS_MILEAGE_RATE as a display default — this now reflects today's correct
+// rate instead of a value that goes stale every time the IRS updates.
+const IRS_MILEAGE_RATE = getRateForDate(null).business;
+
+/* ── Currency support ──────────────────────────────────────────
+   Foreign amounts are converted using ECB reference rates via the
+   free Frankfurter API — the same mid-market rates that Visa and
+   Mastercard network rates closely track. Rate lookups use the
+   transaction date on the receipt. User can adjust rate manually. */
+const CURRENCIES = ['USD','EUR','GBP','CAD','MXN','JPY','AUD','CHF','CNY','INR','BRL','KRW','SEK','NOK','DKK','NZD','SGD','HKD','THB','PLN'];
+const fxCache = {};
+
+async function getFxRate(currency, dateStr) {
+  if (!currency || currency === 'USD') return 1;
+  const today = new Date().toISOString().split('T')[0];
+  let d = dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? dateStr : today;
+  if (d > today) d = today; // future dates → use latest
+  const cacheKey = currency + '_' + d;
+  if (fxCache[cacheKey]) return fxCache[cacheKey];
+
+  // Provider 1: Frankfurter current API (ECB rates, historical by date)
+  try {
+    const resp = await fetch(`https://api.frankfurter.dev/v1/${d}?base=${currency}&symbols=USD`);
+    if (resp.ok) {
+      const data = await resp.json();
+      const rate = data?.rates?.USD;
+      if (rate) { fxCache[cacheKey] = rate; return rate; }
+    }
+  } catch(e) {}
+
+  // Provider 2: Frankfurter legacy domain (same data, older host)
+  try {
+    const resp = await fetch(`https://api.frankfurter.app/${d}?from=${currency}&to=USD`);
+    if (resp.ok) {
+      const data = await resp.json();
+      const rate = data?.rates?.USD;
+      if (rate) { fxCache[cacheKey] = rate; return rate; }
+    }
+  } catch(e) {}
+
+  // Provider 3: open.er-api.com — current rate only (no historical),
+  // still a reasonable approximation if the receipt is recent
+  try {
+    const resp = await fetch(`https://open.er-api.com/v6/latest/${currency}`);
+    if (resp.ok) {
+      const data = await resp.json();
+      const rate = data?.rates?.USD;
+      if (rate) { fxCache[cacheKey] = rate; return rate; }
+    }
+  } catch(e) {}
+
+  return null; // all providers failed — user enters rate manually
+}
+
+const VENDOR_PATTERNS = [
+  { re: /hotel|hilton|marriott|hyatt|sheraton|westin|airbnb|vrbo|hampton inn|holiday inn|radisson|doubletree|omni|ritz|four seasons|intercontinental|inn(?!\s+out)|lodge|resort|suites/i, code: '5020' },
+  { re: /restaurant|cafe|coffee|starbucks|mcdonald|burger|pizza|subway|grubhub|doordash|ubereats|chipotle|panera|domino|dunkin|diner|grill|kitchen|dining|lunch|breakfast|dinner|snack|steakhouse|sushi|thai|mexican|italian|barbeque|bbq/i, code: '5030' },
+  { re: /uber|lyft|taxi|cab|rideshare|parking|garage|park n|lot\s*#|baggage|airline|airport|delta|united|southwest|american airlines|jetblue|spirit|frontier|enterprise|hertz|avis|budget|national|alamo|thrifty|dollar rental|shell|chevron|exxon|mobil|bp\s|gas station|fuel|speedway|wawa|kwik|sunoco/i, code: '5055' },
+  { re: /mileage|odometer|miles driven|google maps|apple maps|mapquest|directions|trip summary|route|distance.*mi|mi.*distance/i, code: '5055' },
+  { re: /cvs|walgreens|walmart|amazon|target|costco|staples|office depot|best buy|dollar (tree|general)|rite aid|sam.s club|kroger|publix|safeway|whole foods|trader joe|supply store|hardware|home depot|lowe.s/i, code: '5590' },
+  { re: /t-mobile|at&t|verizon|international.*plan|roaming|phone plan|sim card|world pass|global pass|travel plan|sprint|boost mobile|cricket wireless/i, code: '5510' },
+];
+
+const STAMPLI_EMAIL = 'usagym@mystampli.com';
+const API_URL = 'https://api.anthropic.com/v1/messages';
+const MODEL = 'claude-sonnet-4-5';
+
+/* ── API key helpers ───────────────────────────────────────────── */
+function getApiKey() { return storageGet('med_anthropic_key') || ''; }
+function setApiKey(k) { storageSet('med_anthropic_key', k.trim()); }
+
+/* ── State ─────────────────────────────────────────────────────── */
+let receipts = [];
+let expenses = [];
+let pdfDataUrl = null;
+let savedName = '';
+
+/* ── Storage (localStorage as persistent store) ────────────────── */
+function storageGet(key) {
+  try { return localStorage.getItem(key); } catch(e) { return null; }
+}
+function storageSet(key, val) {
+  try { localStorage.setItem(key, val); } catch(e) {}
+}
+
+/* ── Init ──────────────────────────────────────────────────────── */
+/* ── Draft persistence (IndexedDB) ─────────────────────────────
+   Auto-saves receipts, expenses, and form fields so users can
+   upload receipts over multiple sessions and resume anytime.   */
+const DB_NAME = 'med_expense_app';
+const DB_STORE = 'drafts';
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains(DB_STORE)) {
+        req.result.createObjectStore(DB_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function dbSet(key, value) {
+  try {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(DB_STORE, 'readwrite');
+      tx.objectStore(DB_STORE).put(value, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch(e) { /* IndexedDB unavailable — silently skip */ }
+}
+
+async function dbGet(key) {
+  try {
+    const db = await openDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction(DB_STORE, 'readonly');
+      const req = tx.objectStore(DB_STORE).get(key);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    });
+  } catch(e) { return null; }
+}
+
+async function dbDelete(key) {
+  try {
+    const db = await openDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction(DB_STORE, 'readwrite');
+      tx.objectStore(DB_STORE).delete(key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  } catch(e) {}
+}
+
+let saveTimer = null;
+function saveDraft() {
+  // Debounce: batch rapid changes into one write
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    const draft = {
+      savedAt: new Date().toISOString(),
+      receipts: receipts.map(r => ({
+        id: r.id, name: r.name, dataUrl: r.dataUrl,
+        status: r.status, result: r.result || null
+      })),
+      expenses: expenses,
+      form: {
+        invNum: document.getElementById('invNum')?.value || '',
+        invDate: document.getElementById('invDate')?.value || '',
+        invTo: document.getElementById('invTo')?.value || '',
+        invPurpose: document.getElementById('invPurpose')?.value || '',
+        honorDays: document.getElementById('honorDays')?.value || '',
+        honorRate: document.getElementById('honorRate')?.value || ''
+      }
+    };
+    await dbSet('current_draft', draft);
+    showSaveIndicator();
+  }, 800);
+}
+
+function showSaveIndicator() {
+  const el = document.getElementById('saveIndicator');
+  if (!el) return;
+  el.style.opacity = '1';
+  el.textContent = '✓ Draft saved';
+  setTimeout(() => { el.style.opacity = '0'; }, 2000);
+}
+
+async function restoreDraft() {
+  const draft = await dbGet('current_draft');
+  if (!draft || (!draft.receipts?.length && !draft.expenses?.length)) return false;
+
+  const savedDate = new Date(draft.savedAt);
+  const ageHours = (Date.now() - savedDate) / 3.6e6;
+  const when = ageHours < 1 ? 'less than an hour ago'
+    : ageHours < 24 ? `${Math.round(ageHours)} hour${Math.round(ageHours)!==1?'s':''} ago`
+    : `${Math.round(ageHours/24)} day${Math.round(ageHours/24)!==1?'s':''} ago`;
+
+  // Show resume banner
+  const banner = document.createElement('div');
+  banner.id = 'resumeBanner';
+  banner.style.cssText = 'background:#E6F1FB;border:1.5px solid #B5D4F4;border-radius:12px;padding:1rem 1.25rem;margin-bottom:1.5rem;display:flex;align-items:center;gap:14px;flex-wrap:wrap';
+  banner.innerHTML = `
+    <i class="ti ti-history" style="font-size:24px;color:#0C447C;flex-shrink:0"></i>
+    <div style="flex:1;min-width:200px">
+      <div style="font-weight:600;font-size:14px;color:#0C447C">You have a saved draft</div>
+      <div style="font-size:13px;color:#185FA5">${draft.receipts.length} receipt${draft.receipts.length!==1?'s':''} · saved ${when}</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="doRestoreDraft()" style="background:#0C447C;color:white;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:500;font-family:inherit;cursor:pointer">
+        <i class="ti ti-player-play" style="vertical-align:-1px"></i> Resume draft
+      </button>
+      <button onclick="discardDraft()" style="background:white;color:#791F1F;border:1px solid #F09595;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:500;font-family:inherit;cursor:pointer">
+        Discard
+      </button>
+    </div>`;
+  document.querySelector('.main').insertBefore(banner, document.querySelector('.step-progress'));
+  window._pendingDraft = draft;
+  return true;
+}
+
+function doRestoreDraft() {
+  const draft = window._pendingDraft;
+  if (!draft) return;
+
+  receipts = (draft.receipts || []).map(r => ({
+    ...r,
+    file: { type: r.dataUrl?.startsWith('data:image') ? (r.dataUrl.match(/data:([^;]+)/)?.[1] || 'image/jpeg') : 'application/pdf' }
+  }));
+  expenses = draft.expenses || [];
+
+  const f = draft.form || {};
+  if (f.invNum) document.getElementById('invNum').value = f.invNum;
+  if (f.invDate) document.getElementById('invDate').value = f.invDate;
+  if (f.invTo) document.getElementById('invTo').value = f.invTo;
+  if (f.invPurpose) document.getElementById('invPurpose').value = f.invPurpose;
+  if (f.honorDays) document.getElementById('honorDays').value = f.honorDays;
+  if (f.honorRate) document.getElementById('honorRate').value = f.honorRate;
+
+  renderReceiptGrid();
+  refreshTotal();
+  document.getElementById('resumeBanner')?.remove();
+
+  // Land on the right step: if expenses exist, go to review; else stay on upload
+  if (expenses.length > 0) goStep(2); else goStep(1);
+}
+
+async function discardDraft() {
+  await dbDelete('current_draft');
+  document.getElementById('resumeBanner')?.remove();
+  window._pendingDraft = null;
+}
+
+(function init() {
+  document.getElementById('invDate').value = new Date().toISOString().split('T')[0];
+
+  // wire file input + drop zone
+  const dz = document.getElementById('dropzone');
+  const fi = document.getElementById('fileInput');
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag'); handleFiles(e.dataTransfer.files); });
+  dz.addEventListener('click', e => { if (e.target.classList.contains('browse-link')) return; fi.click(); });
+  fi.addEventListener('change', e => handleFiles(e.target.files));
+
+  loadSavedName();
+  updateApiKeyBadge();
+  document.getElementById('invNum').value = nextInvoiceNumber();
+
+  // Auto-save form fields as they change
+  ['invNum','invDate','invTo','invPurpose','honorDays','honorRate'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', saveDraft);
+  });
+
+  // Check for a saved draft from a previous session
+  restoreDraft();
+
+  if (!getApiKey()) setTimeout(() => openApiModal(false), 400);
+})();
+
+/* ── Name persistence ──────────────────────────────────────────── */
+function loadSavedName() {
+  savedName = storageGet('med_submitter_name') || '';
+  const banner = document.getElementById('nameBanner');
+  const nameInput = document.getElementById('invName');
+  const badge = document.getElementById('nameBadge');
+  const note = document.getElementById('nameNote');
+  const editBtn = document.getElementById('editNameBtn');
+  const topbar = document.getElementById('topbarName');
+
+  if (savedName) {
+    nameInput.value = savedName;
+    nameInput.readOnly = true;
+    badge.style.display = 'inline';
+    note.classList.remove('hidden');
+    editBtn.classList.remove('hidden');
+    topbar.textContent = savedName;
+    banner.classList.add('hidden');
+  } else {
+    banner.classList.remove('hidden');
+    topbar.textContent = 'Set your name ↑';
+  }
+}
+
+function saveBannerName() {
+  const input = document.getElementById('bannerNameInput');
+  const name = input.value.trim();
+  if (!name) { input.focus(); input.style.borderColor = 'var(--red-600)'; return; }
+  storageSet('med_submitter_name', name);
+  savedName = name;
+  document.getElementById('invName').value = name;
+  document.getElementById('invName').readOnly = true;
+  document.getElementById('nameBadge').style.display = 'inline';
+  document.getElementById('nameNote').classList.remove('hidden');
+  document.getElementById('editNameBtn').classList.remove('hidden');
+  document.getElementById('topbarName').textContent = name;
+  document.getElementById('nameBanner').classList.add('hidden');
+}
+
+function editName() {
+  const input = document.getElementById('invName');
+  input.readOnly = false;
+  input.focus(); input.select();
+  document.getElementById('nameBadge').style.display = 'none';
+  document.getElementById('nameNote').classList.add('hidden');
+  document.getElementById('editNameBtn').classList.add('hidden');
+  input.addEventListener('blur', function done() {
+    const v = input.value.trim();
+    if (v) {
+      storageSet('med_submitter_name', v);
+      savedName = v;
+      input.readOnly = true;
+      document.getElementById('nameBadge').style.display = 'inline';
+      document.getElementById('nameNote').classList.remove('hidden');
+      document.getElementById('editNameBtn').classList.remove('hidden');
+      document.getElementById('topbarName').textContent = v;
+    }
+    input.removeEventListener('blur', done);
+  });
+}
+
+/* ── Step navigation ───────────────────────────────────────────── */
+function goStep(n) {
+  [1,2,3,4].forEach(i => {
+    document.getElementById('step'+i).classList.toggle('hidden', i !== n);
+    const circ = document.getElementById('sc'+i);
+    const lbl  = document.getElementById('sl'+i);
+    circ.className = 'step-circle' + (i===n?' active': i<n?' done':'');
+    lbl.className  = 'step-label'  + (i===n?' active': i<n?' done':'');
+    circ.textContent = i < n ? '' : String(i);
+    if (i < n) circ.innerHTML = '<i class="ti ti-check" style="font-size:14px"></i>';
+    if (i < 4) document.getElementById('conn'+i).className = 'step-connector' + (i < n ? ' done' : '');
+  });
+
+  if (n === 2) renderExpenseTable();
+  if (n === 3) renderSummary();
+  if (n === 4) { populateEmail(); setTimeout(buildPDF, 250); }
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/* ── File handling ─────────────────────────────────────────────── */
+function handleFiles(files) {
+  Array.from(files).forEach(async (file) => {
+    let processedFile = file;
+
+    // True HEIC/HEIF files can't be decoded by most browsers (only
+    // Safari can). Convert them to a real JPEG here, at intake, using
+    // heic2any (WASM-based, works regardless of native browser support)
+    // so every downstream step — thumbnails, AI analysis, PDF embedding —
+    // only ever sees a genuine, correctly-labeled JPEG.
+    const looksHeic = /image\/hei[cf]/i.test(file.type) || /\.(heic|heif)$/i.test(file.name);
+    if (looksHeic && window.heic2any) {
+      try {
+        const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.88 });
+        const blob = Array.isArray(converted) ? converted[0] : converted;
+        processedFile = new File([blob], file.name.replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' });
+      } catch (e) {
+        console.warn('HEIC conversion failed, using original file as a fallback:', e);
+      }
+    }
+
+    const reader = new FileReader();
+    reader.onload = ev => {
+      receipts.push({
+        id: Date.now() + '_' + Math.random(),
+        file: processedFile, name: file.name,
+        dataUrl: ev.target.result,
+        status: 'pending', result: null
+      });
+      renderReceiptGrid();
+      saveDraft();
+    };
+    reader.readAsDataURL(processedFile);
+  });
+}
+
+function renderReceiptGrid() {
+  const grid    = document.getElementById('receiptGrid');
+  const actions = document.getElementById('step1Actions');
+  if (!receipts.length) {
+    grid.classList.add('hidden');
+    actions.style.display = 'none';
+    return;
+  }
+  grid.classList.remove('hidden');
+  actions.style.display = 'flex';
+
+  grid.innerHTML = receipts.map(r => {
+    const isImg = r.dataUrl.startsWith('data:image');
+    const statusHtml =
+      r.status === 'analyzing' ? `<div class="receipt-status-overlay"><div class="spinner"></div></div>` :
+      r.status === 'done'      ? `<div class="receipt-status-overlay" style="background:rgba(59,109,17,0.5)"><i class="ti ti-check" style="font-size:26px;color:white"></i></div>` : '';
+
+    return `<div class="receipt-card">
+      ${isImg
+        ? `<img class="receipt-thumb" src="${r.dataUrl}" alt="${esc(r.name)}">`
+        : `<div class="receipt-placeholder"><i class="ti ti-file-text" aria-hidden="true"></i></div>`}
+      ${statusHtml}
+      <button class="receipt-remove" onclick="removeReceipt('${r.id}')" aria-label="Remove receipt">
+        <i class="ti ti-x" aria-hidden="true"></i>
+      </button>
+      <div class="receipt-meta">
+        <div class="receipt-name" title="${esc(r.name)}">${esc(r.name)}</div>
+        <div class="receipt-status s-${r.status}">${
+          r.status==='pending'   ? 'Waiting...' :
+          r.status==='analyzing' ? '⟳ Analyzing...' :
+          r.status==='done'      ? '✓ Analyzed' : '⚠ Error reading receipt'
+        }</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function removeReceipt(id) {
+  receipts = receipts.filter(r => r.id !== id);
+  expenses = expenses.filter(e => e.receiptId !== id);
+  renderReceiptGrid();
+  saveDraft();
+}
+
+/* ── API Key modal ─────────────────────────────────────────────── */
+function openApiModal(allowCancel) {
+  const modal = document.getElementById('apiModal');
+  modal.style.display = 'flex';
+  const cancelBtn = document.getElementById('apiModalCancel');
+  cancelBtn.style.display = allowCancel && getApiKey() ? 'block' : 'none';
+  const existing = getApiKey();
+  if (existing) {
+    document.getElementById('apiKeyInput').value = existing;
+  }
+  document.getElementById('apiKeyError').style.display = 'none';
+  setTimeout(() => document.getElementById('apiKeyInput').focus(), 80);
+}
+
+function closeApiModal() {
+  document.getElementById('apiModal').style.display = 'none';
+}
+
+function saveApiKey() {
+  const val = document.getElementById('apiKeyInput').value.trim();
+  const errEl = document.getElementById('apiKeyError');
+  if (!val) {
+    errEl.textContent = 'Please enter your Anthropic API key.';
+    errEl.style.display = 'block'; return;
+  }
+  if (!val.startsWith('sk-ant-')) {
+    errEl.textContent = 'That doesn\'t look like an Anthropic key — it should start with sk-ant-. Check console.anthropic.com.';
+    errEl.style.display = 'block'; return;
+  }
+  setApiKey(val);
+  errEl.style.display = 'none';
+  document.getElementById('apiKeyStatus').textContent = 'Key saved ✓';
+  document.getElementById('apiKeyBtn').style.background = 'rgba(59,109,17,0.35)';
+  closeApiModal();
+}
+
+function updateApiKeyBadge() {
+  const k = getApiKey();
+  const status = document.getElementById('apiKeyStatus');
+  const btn = document.getElementById('apiKeyBtn');
+  if (k) {
+    status.textContent = 'Key saved ✓';
+    btn.style.background = 'rgba(59,109,17,0.3)';
+  } else {
+    status.textContent = 'No key set';
+    btn.style.background = 'rgba(255,255,255,0.13)';
+  }
+}
+
+/* ── AI analysis ───────────────────────────────────────────────── */
+async function analyzeAll() {
+  if (!getApiKey()) { openApiModal(false); return; }
+
+  // Clear any previous error banners
+  document.querySelectorAll('.analyze-error-banner').forEach(el => el.remove());
+
+  const btn      = document.getElementById('analyzeBtn');
+  const prog     = document.getElementById('analyzeProgress');
+  const progText = document.getElementById('progressText');
+  btn.disabled = true;
+  prog.classList.remove('hidden');
+
+  let firstError = null;
+  const pending = receipts.filter(r => r.status !== 'done');
+  let completed = 0;
+  progText.textContent = `Analyzing ${pending.length} receipt${pending.length!==1?'s':''}...`;
+
+  // Process up to 3 receipts in parallel for speed, preserving upload order in results
+  const CONCURRENCY = 3;
+  const results = new Array(pending.length);
+
+  async function worker(startIdx) {
+    for (let i = startIdx; i < pending.length; i += CONCURRENCY) {
+      const r = pending[i];
+      r.status = 'analyzing';
+      renderReceiptGrid();
+      try {
+        results[i] = { r, result: await analyzeReceipt(r) };
+        r.status = 'done';
+      } catch(err) {
+        r.status = 'error';
+        r.errorMsg = err.message;
+        if (!firstError) firstError = err.message;
+        results[i] = { r, result: null };
+      }
+      completed++;
+      progText.textContent = `Analyzed ${completed} of ${pending.length} receipt${pending.length!==1?'s':''}...`;
+      renderReceiptGrid();
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, pending.length) }, (_, k) => worker(k))
+  );
+
+  // Push expenses in original upload order (async: foreign currency rows fetch FX rates)
+  for (const entry of results) {
+    if (!entry || !entry.result) continue;
+    const { r, result } = entry;
+    r.result = result;
+    const code = result.isMileage ? '5055' : autoCode(result.vendor, result.description);
+
+    const currency = (result.currency || 'USD').toUpperCase();
+    const isForeign = currency !== 'USD' && !result.isMileage;
+    let usdAmount = result.amount || '';
+    let fxRate = 1;
+
+    if (isForeign && result.amount) {
+      progText.textContent = `Converting ${currency} to USD...`;
+      const rate = await getFxRate(currency, result.date);
+      if (rate) {
+        fxRate = rate;
+        usdAmount = (parseFloat(result.amount) * rate).toFixed(2);
+      } else {
+        fxRate = 0; // signals rate unavailable — user must confirm manually
+        usdAmount = '';
+      }
+    }
+
+    expenses.push({
+      receiptId: r.id, dataUrl: r.dataUrl,
+      vendor: result.vendor || '', description: result.description || '',
+      date: result.date || '', amount: usdAmount,
+      code: code || '', otherDesc: '',
+      isMileage: result.isMileage || false,
+      miles: result.miles || 0,
+      mileageRate: result.rate || IRS_MILEAGE_RATE,
+      tripDesc: result.tripDesc || '',
+      currency: currency,
+      originalAmount: isForeign ? (result.amount || '') : '',
+      fxRate: fxRate,
+      currencyEvidence: result.currency_evidence || '',
+      fxConfirmed: !isForeign, // foreign rows need user confirmation
+      dualReceiptNote: result.dual_receipt_note || ''
+    });
+  }
+  saveDraft();
+
+  prog.classList.add('hidden');
+  btn.disabled = false;
+
+  if (firstError) {
+    const friendly = friendlyError(firstError);
+    const isFileProto = firstError === 'FILE_PROTOCOL';
+    const banner = document.createElement('div');
+    banner.className = 'analyze-error-banner';
+    banner.style.cssText = 'background:#FCEBEB;border:1.5px solid #F09595;border-radius:12px;padding:1rem 1.25rem;margin-top:1.25rem;font-size:13.5px;color:#791F1F;line-height:1.6';
+    banner.innerHTML = `<div style="display:flex;align-items:flex-start;gap:10px">
+      <i class="ti ti-alert-circle" style="font-size:20px;flex-shrink:0;margin-top:1px;color:#A32D2D"></i>
+      <div style="flex:1">
+        <strong>Receipt analysis failed</strong><br>${friendly}
+        ${isFileProto ? `<div style="margin-top:10px;background:#fff3f3;border-radius:8px;padding:10px 12px;font-size:13px">
+          <strong>How to fix:</strong> You need to serve this file from a local web server instead of opening it directly.<br><br>
+          <strong>Easiest options:</strong><br>
+          • <strong>VS Code:</strong> Install the "Live Server" extension, right-click the file → Open with Live Server<br>
+          • <strong>Python:</strong> Open terminal in the file's folder and run: <code style="background:#fee;padding:1px 5px;border-radius:3px">python3 -m http.server 8080</code> then open <a href="http://localhost:8080" style="color:#A32D2D">http://localhost:8080</a><br>
+          • <strong>Node:</strong> Run <code style="background:#fee;padding:1px 5px;border-radius:3px">npx serve .</code> then open the shown URL<br>
+          • <strong>Netlify Drop:</strong> Drag the file to <a href="https://app.netlify.com/drop" target="_blank" style="color:#A32D2D">app.netlify.com/drop</a> for a free hosted URL
+        </div>` : `<div style="margin-top:8px">
+          <button onclick="testConnection()" style="background:white;border:1px solid #F09595;border-radius:7px;padding:5px 12px;font-size:12.5px;font-family:inherit;cursor:pointer;color:#791F1F;font-weight:500">
+            <i class="ti ti-wifi" style="vertical-align:-1px"></i> Run connection test
+          </button>
+          <button onclick="openApiModal(true)" style="background:white;border:1px solid #F09595;border-radius:7px;padding:5px 12px;font-size:12.5px;font-family:inherit;cursor:pointer;color:#791F1F;font-weight:500;margin-left:6px">
+            <i class="ti ti-key" style="vertical-align:-1px"></i> Update API key
+          </button>
+        </div>`}
+      </div>
+    </div>`;
+    document.getElementById('step1').appendChild(banner);
+    return; // Don't navigate away on error
+  }
+
+  const done = receipts.filter(r => r.status === 'done');
+  if (done.length > 0) goStep(2);
+}
+
+async function callAnthropicAPI(messages, system, maxTokens) {
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error('NO_KEY');
+
+  let resp;
+  try {
+    resp = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({ model: MODEL, max_tokens: maxTokens || 1024, system, messages })
+    });
+  } catch (networkErr) {
+    // fetch() itself threw — network failure or CORS
+    const isFile = location.protocol === 'file:';
+    if (isFile) throw new Error('FILE_PROTOCOL');
+    throw new Error('NETWORK:' + networkErr.message);
+  }
+
+  if (resp.status === 401) throw new Error('AUTH: Invalid API key. Please update it.');
+  if (resp.status === 403) throw new Error('AUTH: API key does not have permission.');
+  if (resp.status === 429) throw new Error('RATE: Too many requests — wait a moment and try again.');
+  if (!resp.ok) {
+    let msg = `HTTP ${resp.status}`;
+    try { const j = await resp.json(); msg = j?.error?.message || msg; } catch {}
+    throw new Error('API: ' + msg);
+  }
+
+  const data = await resp.json();
+  if (data.error) throw new Error('API: ' + (data.error.message || JSON.stringify(data.error)));
+  return data;
+}
+
+/* Downscale large images before sending to the API.
+   Benefits: ~5-10x faster upload, lower token cost, no quality loss for OCR.
+   Claude vision works optimally at <=1568px on the long edge. */
+async function optimizeImage(dataUrl, fileType) {
+  // Skip PDFs and already-small images
+  if (!dataUrl.startsWith('data:image')) return { dataUrl, mediaType: 'application/pdf' };
+
+  try {
+    const img = await loadImg(dataUrl);
+    const MAX_DIM = 1568;
+    let { width, height } = img;
+    const orientation = getExifOrientation(dataUrl);
+
+    const needsResize = width > MAX_DIM || height > MAX_DIM;
+    const needsConvert = !/jpeg|jpg|png/i.test(fileType || '');
+    const needsRotation = orientation > 1;
+
+    if (!needsResize && !needsConvert && !needsRotation && dataUrl.length < 1_500_000) {
+      // Already small, correctly oriented, and in a supported format — send as-is
+      const mt = /png/i.test(fileType) ? 'image/png' : 'image/jpeg';
+      return { dataUrl, mediaType: mt };
+    }
+
+    if (needsResize) {
+      const scale = MAX_DIM / Math.max(width, height);
+      width = Math.round(width * scale);
+      height = Math.round(height * scale);
+    }
+
+    const canvas = drawImageCorrected(img, dataUrl, width, height);
+    const optimized = canvas.toDataURL('image/jpeg', 0.88);
+    return { dataUrl: optimized, mediaType: 'image/jpeg' };
+  } catch {
+    // If anything fails (e.g. undecodable format), fall back to original
+    let mt = fileType || 'image/jpeg';
+    if (/heic|heif/i.test(mt)) mt = 'image/jpeg';
+    return { dataUrl, mediaType: mt };
+  }
+}
+
+async function analyzeReceipt(r) {
+  const isImage = r.dataUrl.startsWith('data:image');
+
+  // Optimize image (resize + convert to JPEG) before sending
+  let sendDataUrl = r.dataUrl;
+  let mediaType = 'application/pdf';
+  if (isImage) {
+    const opt = await optimizeImage(r.dataUrl, r.file.type);
+    sendDataUrl = opt.dataUrl;
+    mediaType = opt.mediaType;
+  }
+
+  const b64 = sendDataUrl.split(',')[1];
+  if (!b64) throw new Error('Could not read file data.');
+
+  // SINGLE API call: classify AND extract in one pass (previously two calls)
+  const system = `You are an expert at reading expense documents. First classify the image, then extract data. Respond ONLY with a valid JSON object, no markdown, no backticks:
+{"doc_type":"receipt|map|mileage_log","vendor":"store or business name (for receipts)","description":"brief description of purchase or trip","date":"YYYY-MM-DD or empty string","amount":"numeric total paid e.g. 42.75 (for receipts only; empty for maps)","currency":"ISO 4217 code e.g. USD, EUR, GBP, JPY, CAD, MXN","currency_evidence":"brief note on how currency was determined","category_hint":"hotel|meal|travel|supplies|phone|mileage|other","miles":"numeric miles as decimal e.g. 47.3 (ONLY for maps/mileage logs; empty otherwise)","origin":"trip start location (maps only)","destination":"trip end location (maps only)","dual_receipt_note":"brief note if two related receipts were in one photo; empty otherwise"}
+
+Classification rules:
+- "map": Google Maps, Apple Maps, or any navigation app screenshot showing a route with a distance (e.g. "47.3 mi")
+- "mileage_log": handwritten or printed mileage log; sum all trip rows for total miles
+- "receipt": store/hotel/restaurant/service receipt; amount = final total paid after tax and tip
+
+MULTIPLE RECEIPTS IN ONE PHOTO (restaurants/meals — VERY IMPORTANT):
+- Restaurant expenses often photograph TWO receipts together: the itemized check (subtotal + tax, NO tip) and the credit card slip (with tip line and final total)
+- When you see two receipts from the SAME restaurant/meal in one photo, they are the SAME expense — do NOT sum them
+- Use the HIGHER total: the one that INCLUDES the tip (usually the credit card slip's final "Total" after the tip line, often handwritten)
+- If the tip line is handwritten, add carefully: total = pre-tip amount + handwritten tip
+- Set "dual_receipt_note" to something like "2 receipts in photo: itemized check $52.40 + card slip with tip, final total $62.40 used"
+- Set "amount" to the tip-inclusive final total
+- If two receipts appear but are clearly DIFFERENT purchases (different vendors, different dates), extract only the more complete one and note it
+
+Currency detection (VERY IMPORTANT — check carefully):
+- Look at the currency symbol: € = EUR, £ = GBP, ¥ = JPY (Japan) or CNY (China), ₹ = INR, C$ = CAD, A$ = AUD, MX$ or $ with Mexican address = MXN, CHF = CHF, kr = SEK/NOK/DKK depending on country
+- Look at the receipt language: Italian/French/German/Spanish (Spain) text suggests EUR; Japanese suggests JPY; etc.
+- Look at the business address, phone country code, VAT/IVA/GST labels, and tax formats
+- A plain "$" alone is NOT proof of USD — check address and language (could be CAD, AUD, MXN)
+- The "amount" field must be the number as printed in the LOCAL currency, unconverted
+- Default to "USD" only when evidence points to the United States
+
+Use empty string for any unknown field.`;
+
+  const content = [];
+  if (isImage) content.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: b64 } });
+  else content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } });
+  content.push({ type: 'text', text: 'Classify this document and extract the expense information.' });
+
+  const data = await callAnthropicAPI([{ role: 'user', content }], system, 1024);
+  const raw = (data.content || []).map(c => c.text || '').join('').replace(/```json|```/g,'').trim();
+  if (!raw) throw new Error('Empty response from AI.');
+
+  let result;
+  try { result = JSON.parse(raw); }
+  catch {
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (m) result = JSON.parse(m[0]);
+    else throw new Error('Could not parse AI response.');
+  }
+
+  // Mileage documents: compute reimbursement client-side at IRS rate
+  if (result.doc_type === 'map' || result.doc_type === 'mileage_log') {
+    const miles = parseFloat(result.miles) || 0;
+    const rate = getRateForDate(result.date).business;
+    const origin = result.origin || '';
+    const dest = result.destination || '';
+    const tripDesc = (origin && dest) ? `${origin} → ${dest}` : (result.description || 'Mileage');
+
+    return {
+      vendor: 'Mileage',
+      description: tripDesc,
+      date: result.date || '',
+      amount: (miles * rate).toFixed(2),
+      currency: 'USD',
+      category_hint: 'mileage',
+      isMileage: true,
+      miles: miles,
+      rate: rate,
+      tripDesc: tripDesc
+    };
+  }
+
+  return result;
+}
+
+async function testConnection() {
+  const btn = document.getElementById('testConnBtn');
+  const out = document.getElementById('testConnOut');
+  btn.disabled = true;
+  out.style.display = 'block';
+  out.className = 'diag-box diag-info';
+  out.textContent = '⟳ Testing connection to Anthropic API...';
+  try {
+    const data = await callAnthropicAPI(
+      [{ role: 'user', content: 'Reply with exactly: {"ok":true}' }],
+      'You respond only with valid JSON.',
+      32
+    );
+    const txt = (data.content||[]).map(c=>c.text||'').join('').trim();
+    out.className = 'diag-box diag-ok';
+    out.textContent = '✓ Connection successful! API key is valid. Response: ' + txt;
+  } catch(e) {
+    out.className = 'diag-box diag-err';
+    out.textContent = '✗ ' + friendlyError(e.message);
+  }
+  btn.disabled = false;
+}
+
+function friendlyError(msg) {
+  if (!msg) return 'Unknown error.';
+  if (msg === 'NO_KEY') return 'No API key saved. Click the key icon in the toolbar.';
+  if (msg === 'FILE_PROTOCOL') return 'BLOCKED: You are opening this file directly (file://) — browsers block API calls from local files. You must serve it via a web server. See instructions below.';
+  if (msg.startsWith('NETWORK:')) return 'Network error — could not reach api.anthropic.com. Check your internet connection. Detail: ' + msg.slice(8);
+  if (msg.startsWith('AUTH:')) return msg.slice(5);
+  if (msg.startsWith('RATE:')) return msg.slice(5);
+  if (msg.startsWith('API:')) return 'Anthropic API error: ' + msg.slice(4);
+  return msg;
+}
+
+function autoCode(vendor, desc) {
+  const text = ((vendor || '') + ' ' + (desc || '')).toLowerCase();
+  for (const p of VENDOR_PATTERNS) { if (p.re.test(text)) return p.code; }
+  return null;
+}
+
+/* ── Expense table (step 2) ────────────────────────────────────── */
+function renderExpenseTable() {
+  document.getElementById('expenseBody').innerHTML = expenses.map((e, i) => {
+    const isImg = e.dataUrl && e.dataUrl.startsWith('data:image');
+    // ONLY the isMileage flag determines mileage rendering — NOT the 5055 code,
+    // since 5055 also covers Uber, parking, gas, etc.
+    const isMileage = !!e.isMileage;
+    const isForeign = e.currency && e.currency !== 'USD' && !isMileage;
+    const rate = e.mileageRate || IRS_MILEAGE_RATE;
+
+    const vendorDescCell = isMileage ? `
+      <input value="${esc(e.vendor)}" onchange="upd(${i},'vendor',this.value)" placeholder="Trip description" style="margin-bottom:4px">
+      <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-top:2px">
+        <input type="number" step="0.1" min="0" value="${e.miles||''}" onchange="updMileage(${i},'miles',this.value)" placeholder="Miles" style="width:76px;text-align:right">
+        <span style="font-size:12px;color:var(--text-muted)">mi ×</span>
+        <input type="number" step="0.001" min="0" value="${rate}" onchange="updMileage(${i},'mileageRate',this.value)" style="width:68px;text-align:right">
+        <span style="font-size:12px;color:var(--text-muted)">/mi</span>
+        <span class="gl-badge gl-badge-coded" style="font-size:10px" title="IRS rate in effect on ${e.date || 'this date'}">IRS $${getRateForDate(e.date).business.toFixed(3)}</span>
+      </div>` : `
+      <input value="${esc(e.vendor)}" onchange="upd(${i},'vendor',this.value)" placeholder="Vendor name">
+      <input value="${esc(e.description)}" onchange="upd(${i},'description',this.value)" placeholder="Description / notes" style="margin-top:4px">`;
+
+    const amountCell = isMileage
+      ? `<input type="number" step="0.01" value="${e.amount}" readonly placeholder="0.00" style="text-align:right;background:var(--gray-50);border-style:dashed;width:100%">`
+      : isForeign
+      ? `<input type="number" step="0.01" min="0" value="${e.amount}" onchange="updFxUsd(${i},this.value)" placeholder="0.00" style="text-align:right;${e.fxManual ? 'border-color:var(--amber-400);background:var(--amber-50)' : ''}" title="${e.fxManual ? 'Manually overridden USD amount' : 'USD amount (auto-converted — type here to override)'}">${e.fxManual ? '<span class="gl-badge gl-badge-uncoded" style="font-size:10px;margin-top:3px;display:inline-block">manual</span>' : ''}`
+      : `<input type="number" step="0.01" min="0" value="${e.amount}" onchange="upd(${i},'amount',this.value)" placeholder="0.00" style="text-align:right">`;
+
+    // Foreign currency confirmation strip — shown under the row
+    const fxStrip = isForeign ? `
+      <tr class="fx-row"><td></td><td colspan="5">
+        <div style="background:${e.fxConfirmed ? 'var(--green-50)' : 'var(--amber-50)'};border:1px solid ${e.fxConfirmed ? '#C0DD97' : '#FAC775'};border-radius:8px;padding:8px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;margin:2px 0 6px">
+          <i class="ti ti-world-dollar" style="font-size:16px;color:${e.fxConfirmed ? 'var(--green-600)' : 'var(--amber-600)'}"></i>
+          <span style="font-weight:600;color:${e.fxConfirmed ? 'var(--green-800)' : 'var(--amber-800)'}">${e.fxManual ? 'Foreign currency — USD amount manually set' : (e.fxConfirmed ? 'Foreign currency' : 'Foreign currency detected — confirm:')}</span>
+          <span style="display:flex;align-items:center;gap:5px">
+            <input type="number" step="0.01" min="0" value="${e.originalAmount}" onchange="updFx(${i},'originalAmount',this.value)" style="width:88px;text-align:right;border:1px solid var(--border-mid);border-radius:6px;padding:3px 7px;font-size:12.5px">
+            <select onchange="updFx(${i},'currency',this.value)" style="border:1px solid var(--border-mid);border-radius:6px;padding:3px 6px;font-size:12.5px">
+              ${CURRENCIES.map(c => `<option value="${c}" ${e.currency===c?'selected':''}>${c}</option>`).join('')}
+            </select>
+            ${e.fxManual
+              ? `<span style="color:var(--text-muted)">→ manual override:</span>
+                 <strong style="color:var(--amber-800)">$${e.amount || '?'}</strong>
+                 <span style="color:var(--text-muted)">USD${e.originalAmount && e.amount ? ` (implied rate ${(parseFloat(e.amount)/parseFloat(e.originalAmount)).toFixed(4)})` : ''}</span>`
+              : `<span style="color:var(--text-muted)">× rate</span>
+                 <input type="number" step="0.0001" min="0" value="${e.fxRate || ''}" onchange="updFx(${i},'fxRate',this.value)" placeholder="${e.fxRate === 0 ? 'unavailable' : ''}" style="width:82px;text-align:right;border:1px solid var(--border-mid);border-radius:6px;padding:3px 7px;font-size:12.5px">
+                 <span style="color:var(--text-muted)">= <strong style="color:var(--text)">$${e.amount || '?'}</strong> USD</span>`}
+          </span>
+          ${e.fxManual
+            ? `<button onclick="revertFxManual(${i})" title="Discard the manual amount and go back to the calculated conversion" style="background:white;border:1px solid var(--border-mid);border-radius:6px;padding:3px 9px;font-size:12px;font-family:inherit;cursor:pointer;color:var(--blue-600)">
+                <i class="ti ti-arrow-back-up" style="vertical-align:-1px"></i> Use calculated rate
+              </button>`
+            : `<button onclick="refreshFxRate(${i})" title="Re-fetch rate for the transaction date" style="background:white;border:1px solid var(--border-mid);border-radius:6px;padding:3px 9px;font-size:12px;font-family:inherit;cursor:pointer;color:var(--blue-600)">
+                <i class="ti ti-refresh" style="vertical-align:-1px"></i> Rate for ${e.date || 'today'}
+              </button>`}
+          ${!e.fxConfirmed ? `<button onclick="confirmFx(${i})" style="background:var(--green-600);border:none;border-radius:6px;padding:4px 12px;font-size:12px;font-family:inherit;cursor:pointer;color:white;font-weight:600">
+            <i class="ti ti-check" style="vertical-align:-1px"></i> Confirm
+          </button>` : ''}
+          ${e.currencyEvidence ? `<span style="color:var(--text-light);font-size:11.5px;font-style:italic;flex-basis:100%">AI: ${esc(e.currencyEvidence)}</span>` : ''}
+        </div>
+      </td></tr>` : '';
+
+    // Dual-receipt note strip (e.g. itemized check + tipped card slip in one photo)
+    const dualStrip = e.dualReceiptNote ? `
+      <tr class="fx-row"><td></td><td colspan="5">
+        <div style="background:var(--blue-50);border:1px solid var(--blue-100);border-radius:8px;padding:7px 12px;display:flex;align-items:center;gap:9px;font-size:12.5px;margin:2px 0 6px">
+          <i class="ti ti-receipt-2" style="font-size:15px;color:var(--blue-600);flex-shrink:0"></i>
+          <span style="color:var(--blue-800)"><strong>Two receipts detected in photo:</strong> ${esc(e.dualReceiptNote)} — the tip-inclusive total was used. Edit the amount above if this is wrong.</span>
+        </div>
+      </td></tr>` : '';
+
+    return `<tr>
+      <td>${isImg ? `<img class="thumb-sm" src="${e.dataUrl}" alt="">` : `<div class="thumb-placeholder-sm"><i class="ti ti-${isMileage?'map-pin':'file'}" aria-hidden="true"></i></div>`}</td>
+      <td>${vendorDescCell}</td>
+      <td><input type="date" value="${e.date}" onchange="upd(${i},'date',this.value)"></td>
+      <td>${amountCell}</td>
+      <td>
+        <select onchange="upd(${i},'code',this.value)" style="margin-bottom:${e.code==='OTHER'?'4px':'0'}">
+          <option value="">— select GL code —</option>
+          ${Object.entries(GL_CODES).map(([k,v]) =>
+            `<option value="${k}" ${e.code===k?'selected':''}>${k!=='OTHER'?k+' – ':''}${v}</option>`
+          ).join('')}
+        </select>
+        ${e.code && e.code!=='OTHER' ? `<span class="gl-badge gl-badge-coded">${e.code}</span>` : ''}
+        ${!e.code ? `<span class="gl-badge gl-badge-uncoded">needs code</span>` : ''}
+        ${e.code==='OTHER' ? `<input value="${esc(e.otherDesc)}" onchange="upd(${i},'otherDesc',this.value)" placeholder="Describe this expense..." style="margin-top:5px">` : ''}
+      </td>
+      <td>
+        <button class="btn btn-icon" style="color:var(--red-600);border-color:var(--red-600)" onclick="removeExpense(${i})" aria-label="Remove expense">
+          <i class="ti ti-trash" aria-hidden="true"></i>
+        </button>
+      </td>
+    </tr>${fxStrip}${dualStrip}`;
+  }).join('');
+  refreshTotal();
+}
+
+function upd(i, field, val) {
+  expenses[i][field] = val;
+  if (field === 'code') {
+    // Moving a mileage row away from 5055 clears its mileage behavior.
+    // We do NOT auto-flag rows switched TO 5055 as mileage, because 5055
+    // also covers regular travel expenses (Uber, parking, gas, baggage).
+    if (val !== '5055') expenses[i].isMileage = false;
+    renderExpenseTable();
+  }
+  if (field === 'amount') renderExpenseTable();
+  refreshTotal();
+  saveDraft();
+}
+
+function updMileage(i, field, val) {
+  expenses[i][field] = parseFloat(val) || 0;
+  const miles = parseFloat(expenses[i].miles) || 0;
+  const rate = parseFloat(expenses[i].mileageRate) || IRS_MILEAGE_RATE;
+  expenses[i].amount = (miles * rate).toFixed(2);
+  // Preserve the AI-extracted trip route (origin → destination); only the
+  // calculation suffix updates when miles/rate change.
+  const trip = expenses[i].tripDesc || expenses[i].vendor || 'Mileage';
+  expenses[i].description = trip;
+  renderExpenseTable();
+  saveDraft();
+}
+function removeExpense(i) { expenses.splice(i, 1); renderExpenseTable(); saveDraft(); }
+
+/* ── Foreign currency handlers ─────────────────────────────────── */
+function recalcFx(i) {
+  const e = expenses[i];
+  if (e.fxManual) return; // user typed the USD amount directly — never clobber it
+  const orig = parseFloat(e.originalAmount) || 0;
+  const rate = parseFloat(e.fxRate) || 0;
+  e.amount = (orig && rate) ? (orig * rate).toFixed(2) : '';
+}
+
+/* User typed a USD amount directly — treat it as authoritative */
+function updFxUsd(i, val) {
+  const e = expenses[i];
+  const usd = parseFloat(val);
+  if (isNaN(usd) || usd < 0) return;
+  e.amount = usd.toFixed(2);
+  e.fxManual = true;
+  e.fxConfirmed = true; // an explicit user-entered amount counts as confirmed
+  renderExpenseTable();
+  saveDraft();
+}
+
+/* Revert a manual override back to the calculated conversion */
+function revertFxManual(i) {
+  const e = expenses[i];
+  e.fxManual = false;
+  e.fxConfirmed = false;
+  recalcFx(i);
+  // If we don't have a usable rate, fetch one for the transaction date
+  if (!e.fxRate) { refreshFxRate(i); return; }
+  renderExpenseTable();
+  saveDraft();
+}
+
+function updFx(i, field, val) {
+  const e = expenses[i];
+  e.fxManual = false; // editing conversion inputs means recalculating
+  if (field === 'currency') {
+    e.currency = val;
+    e.fxConfirmed = false;
+    if (val === 'USD') {
+      // Switching to USD: original amount becomes the amount, no conversion
+      e.amount = e.originalAmount || e.amount;
+      e.fxRate = 1;
+      e.fxConfirmed = true;
+      renderExpenseTable(); saveDraft();
+      return;
+    }
+    // New currency — re-fetch the rate for the transaction date
+    refreshFxRate(i);
+    return;
+  }
+  e[field] = val;
+  e.fxConfirmed = false;
+  recalcFx(i);
+  renderExpenseTable();
+  saveDraft();
+}
+
+async function refreshFxRate(i) {
+  const e = expenses[i];
+  if (!e.currency || e.currency === 'USD') return;
+  const rate = await getFxRate(e.currency, e.date);
+  if (rate) {
+    e.fxRate = rate;
+    recalcFx(i);
+  } else {
+    e.fxRate = 0; // unavailable — user enters manually
+  }
+  e.fxConfirmed = false;
+  renderExpenseTable();
+  saveDraft();
+}
+
+function confirmFx(i) {
+  const e = expenses[i];
+  recalcFx(i);
+  if (!e.amount) return; // can't confirm without a valid conversion
+  e.fxConfirmed = true;
+  renderExpenseTable();
+  saveDraft();
+}
+function getHonorariumTotal() {
+  const days = parseFloat(document.getElementById('honorDays')?.value) || 0;
+  const rate = parseFloat(document.getElementById('honorRate')?.value) || 0;
+  return days * rate;
+}
+
+function refreshTotal() {
+  const expTotal = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+  const honorTotal = getHonorariumTotal();
+  const grand = expTotal + honorTotal;
+
+  // Update honor total display field
+  const honorTotalEl = document.getElementById('honorTotal');
+  if (honorTotalEl) honorTotalEl.value = honorTotal > 0 ? '$' + honorTotal.toFixed(2) : '';
+
+  // Step 2 total = expenses only (honorarium isn't entered until step 3)
+  const t1 = document.getElementById('totalAmount');
+  if (t1) t1.textContent = '$' + expTotal.toFixed(2);
+
+  // Step 3 total = grand total including honorarium
+  const t2 = document.getElementById('totalAmount2');
+  if (t2) t2.textContent = '$' + grand.toFixed(2);
+}
+
+/* ── Summary (step 3) ──────────────────────────────────────────── */
+function renderSummary() {
+  refreshTotal();
+
+  // Group expenses by GL code
+  const groups = {};
+  const codeOrder = [];
+  expenses.forEach(e => {
+    const key = e.code || 'UNCODED';
+    if (!groups[key]) { groups[key] = []; codeOrder.push(key); }
+    groups[key].push(e);
+  });
+
+  let html = '';
+  codeOrder.forEach(key => {
+    const items = groups[key];
+    const subtotal = items.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+    const codeName = key === 'OTHER' ? 'Other'
+      : key === 'UNCODED' ? 'Uncoded'
+      : (GL_CODES[key] || key);
+
+    // Group header
+    html += `<div style="background:var(--blue-50);border-bottom:1px solid var(--border);padding:7px 14px;display:flex;align-items:center;justify-content:space-between">
+      <span style="font-size:12px;font-weight:600;color:var(--blue-800)">${key !== 'UNCODED' && key !== 'OTHER' ? key + ' — ' : ''}${codeName}</span>
+      <span style="font-size:12px;font-weight:600;color:var(--blue-800)">Subtotal: $${subtotal.toFixed(2)}</span>
+    </div>`;
+
+    items.forEach(e => {
+      const isImg = e.dataUrl && e.dataUrl.startsWith('data:image');
+      html += `<div class="summary-item" style="padding-left:22px">
+        ${isImg ? `<img class="thumb-sm" src="${e.dataUrl}" alt="">` : `<div class="thumb-placeholder-sm"><i class="ti ti-file" aria-hidden="true"></i></div>`}
+        <div class="summary-details">
+          <div class="summary-vendor">${esc(e.vendor) || 'Unknown vendor'}</div>
+          <div class="summary-meta"><span>${e.isMileage && e.miles ? `${e.miles} mi × $${(e.mileageRate||IRS_MILEAGE_RATE).toFixed(3)}/mi` : (e.currency && e.currency !== 'USD' && e.originalAmount ? `${e.originalAmount} ${e.currency} × ${parseFloat(e.fxRate||0).toFixed(4)}` : (e.date || '—'))}</span>${!e.isMileage && e.description && !(e.currency && e.currency !== 'USD') ? `<span>·</span><span>${esc(e.description).substring(0,50)}</span>` : ''}</div>
+        </div>
+        <div class="summary-amount">$${parseFloat(e.amount||0).toFixed(2)}</div>
+      </div>`;
+    });
+  });
+
+  // Honorarium row
+  const honorTotal = getHonorariumTotal();
+  const days = parseFloat(document.getElementById('honorDays')?.value) || 0;
+  const rate = parseFloat(document.getElementById('honorRate')?.value) || 0;
+  if (honorTotal > 0) {
+    html += `<div style="background:#EAF3DE;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:7px 14px;display:flex;align-items:center;justify-content:space-between">
+      <span style="font-size:12px;font-weight:600;color:var(--green-800)">5120 — Honorarium</span>
+      <span style="font-size:12px;font-weight:600;color:var(--green-800)">Subtotal: $${honorTotal.toFixed(2)}</span>
+    </div>
+    <div class="summary-item" style="padding-left:22px">
+      <div class="thumb-placeholder-sm"><i class="ti ti-cash" aria-hidden="true"></i></div>
+      <div class="summary-details">
+        <div class="summary-vendor">Honorarium</div>
+        <div class="summary-meta"><span>${days} day${days!==1?'s':''} × $${rate.toFixed(2)}/day</span></div>
+      </div>
+      <div class="summary-amount">$${honorTotal.toFixed(2)}</div>
+    </div>`;
+  }
+
+  document.getElementById('summaryList').innerHTML = html || '<div style="padding:1rem;color:var(--text-muted);font-size:14px">No expenses added.</div>';
+}
+
+/* ── Email ─────────────────────────────────────────────────────── */
+function populateEmail() {
+  const num  = document.getElementById('invNum').value || 'INV-001';
+  const name = document.getElementById('invName').value || '';
+  const purp = document.getElementById('invPurpose').value || '';
+  const appr = document.getElementById('invTo').value || 'Kim Kranz';
+  const honorTotal = getHonorariumTotal();
+  const expTotal = expenses.reduce((s,e) => s+(parseFloat(e.amount)||0), 0);
+  const grand = expTotal + honorTotal;
+  document.getElementById('emailSubject').value = `Expense Report ${num}${purp?' – '+purp:''}`;
+  document.getElementById('emailBody').value =
+    `Hi,\n\nPlease find attached expense report ${num}${purp?' for '+purp:''}.\n\nExpenses total: $${expTotal.toFixed(2)}${honorTotal>0?'\nHonorarium (5120): $'+honorTotal.toFixed(2):''}\nGrand total: $${grand.toFixed(2)}\nSubmitted by: ${name||'[name]'}\nDepartment: Medical\nApprover: ${appr}\n\nReceipt photos are embedded in the PDF for your review.\n\nThank you.`;
+}
+
+function toggleEmailPanel() {
+  const p = document.getElementById('emailPanel');
+  const isHidden = p.classList.contains('hidden');
+  p.classList.toggle('hidden', !isHidden);
+  if (isHidden) p.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function openMailto(e) {
+  e.preventDefault();
+  const subject = encodeURIComponent(document.getElementById('emailSubject').value);
+  const body = encodeURIComponent(document.getElementById('emailBody').value);
+  window.location.href = `mailto:${STAMPLI_EMAIL}?subject=${subject}&body=${body}`;
+  const ok = document.getElementById('sendOk');
+  ok.style.display = 'block';
+  setTimeout(() => { ok.style.display = 'none'; }, 6000);
+}
+
+function copyEmail() {
+  navigator.clipboard.writeText(STAMPLI_EMAIL).then(() => {
+    const t = document.getElementById('copyToast');
+    t.style.display = 'inline-flex';
+    setTimeout(() => { t.style.display = 'none'; }, 2500);
+  });
+}
+
+/* ── PDF builder ───────────────────────────────────────────────── */
+async function buildPDFAtQuality(evidenceQuality, evidenceMaxH) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const PW = doc.internal.pageSize.getWidth();
+  const PH = doc.internal.pageSize.getHeight();
+  const M = 48;
+  let y = M;
+
+  const num   = document.getElementById('invNum').value || 'INV-001';
+  const date  = document.getElementById('invDate').value || new Date().toISOString().split('T')[0];
+  const name  = document.getElementById('invName').value || '';
+  const dept  = 'Medical';
+  const appr  = document.getElementById('invTo').value || 'Kim Kranz';
+  const purp  = document.getElementById('invPurpose').value || '';
+  const honorDays = parseFloat(document.getElementById('honorDays')?.value) || 0;
+  const honorRate = parseFloat(document.getElementById('honorRate')?.value) || 0;
+  const honorTotal = honorDays * honorRate;
+  const expTotal = expenses.reduce((s,e) => s+(parseFloat(e.amount)||0), 0);
+  const grandTotal = expTotal + honorTotal;
+
+  // Header band
+  doc.setFillColor(4, 44, 83);
+  doc.rect(0, 0, PW, 88, 'F');
+  doc.setFillColor(12, 68, 124);
+  doc.rect(0, 60, PW, 28, 'F');
+
+  doc.setTextColor(255,255,255);
+  doc.setFont('helvetica','bold'); doc.setFontSize(22);
+  doc.text('MEDICAL EXPENSE REPORT', M, 36);
+
+  doc.setFont('helvetica','normal'); doc.setFontSize(10);
+  doc.setTextColor(180, 210, 244);
+  doc.text(num, M, 74);
+  doc.text('Date submitted: ' + date, PW - M, 74, { align: 'right' });
+  y = 108;
+
+  // Meta block
+  doc.setTextColor(40, 40, 40); doc.setFontSize(10);
+  const metaLeft  = [['Submitted by:', name], ['Department:', dept]];
+  const metaRight = [['Approver:', appr], ['Purpose:', purp || '—']];
+
+  metaLeft.forEach(([lbl, val], i) => {
+    doc.setFont('helvetica','bold');  doc.text(lbl, M, y + i*18);
+    doc.setFont('helvetica','normal'); doc.text(val || '—', M + 100, y + i*18);
+  });
+  metaRight.forEach(([lbl, val], i) => {
+    doc.setFont('helvetica','bold');  doc.text(lbl, PW/2 + 10, y + i*18);
+    doc.setFont('helvetica','normal'); doc.text((val || '—').substring(0,44), PW/2 + 100, y + i*18);
+  });
+  y += 50;
+
+  doc.setDrawColor(200,200,200); doc.setLineWidth(0.5);
+  doc.line(M, y, PW-M, y); y += 18;
+
+  // Table header
+  doc.setFont('helvetica','bold'); doc.setFontSize(13);
+  doc.setTextColor(4,44,83);
+  doc.text('Expense Line Items', M, y); y += 16;
+
+  const colX = [M, M+26, M+200, M+286, M+356, M+454];
+  doc.setFillColor(230, 238, 248);
+  doc.rect(M, y-11, PW-2*M, 20, 'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(12,68,124);
+  ['#','Vendor / Description','Date','GL Code','Amount'].forEach((h,i) => doc.text(h, colX[i], y));
+  y += 10;
+
+  // Build grouped expense data
+  const groups = {};
+  const codeOrder = [];
+  expenses.forEach(e => {
+    const key = e.code || 'UNCODED';
+    if (!groups[key]) { groups[key] = []; codeOrder.push(key); }
+    groups[key].push(e);
+  });
+
+  let rowNum = 0;
+  codeOrder.forEach(key => {
+    const items = groups[key];
+    const subtotal = items.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+    const codeLabel = key === 'OTHER' ? 'Other' : key === 'UNCODED' ? '—' : key;
+    const codeName  = key === 'OTHER' ? 'Other expense'
+      : key === 'UNCODED' ? 'Uncoded'
+      : (GL_CODES[key] || key);
+
+    // Code group header row
+    if (y > PH - 90) { doc.addPage(); y = M; }
+    doc.setFillColor(220, 232, 246);
+    doc.rect(M, y-10, PW-2*M, 18, 'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(4,44,83);
+    doc.text(`${codeLabel !== '—' ? codeLabel + '  —  ' : ''}${codeName}`, colX[1], y);
+    doc.text('Subtotal: $' + subtotal.toFixed(2), PW-M, y, { align:'right' });
+    doc.setTextColor(90,90,90);
+    y += 10;
+
+    items.forEach(e => {
+      if (y > PH - 90) { doc.addPage(); y = M; }
+      rowNum++;
+      doc.setFillColor(...(rowNum%2===0 ? [255,255,255] : [247,249,252]));
+      doc.rect(M, y-10, PW-2*M, 26, 'F');
+
+      doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(80,80,80);
+      doc.text(String(rowNum), colX[0]+10, y+4, { align:'right' });
+
+      doc.setFont('helvetica','bold'); doc.setTextColor(30,30,30);
+      doc.text((e.vendor||'—').substring(0,26), colX[1], y);
+      doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(110,110,110);
+      if (e.isMileage && e.miles) {
+        doc.text(`${e.miles} mi × $${(e.mileageRate||IRS_MILEAGE_RATE).toFixed(3)}/mi (IRS rate)`, colX[1], y+11);
+      } else if (e.currency && e.currency !== 'USD' && e.originalAmount) {
+        if (e.fxManual) {
+          doc.text(`${e.originalAmount} ${e.currency} — USD amount entered manually`, colX[1], y+11);
+        } else {
+          doc.text(`${e.originalAmount} ${e.currency} × ${parseFloat(e.fxRate||0).toFixed(4)} = USD`, colX[1], y+11);
+        }
+      } else {
+        doc.text((e.description||'').substring(0,34), colX[1], y+11);
+      }
+
+      doc.setFontSize(9); doc.setTextColor(30,30,30);
+      doc.text(e.date || '—', colX[2], y+4);
+
+      doc.setFont('helvetica','bold'); doc.setTextColor(12,68,124);
+      doc.text(codeLabel, colX[3], y);
+      doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(110,110,110);
+      doc.text(codeName.substring(0,22), colX[3], y+11);
+
+      doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(30,30,30);
+      doc.text('$'+parseFloat(e.amount||0).toFixed(2), colX[4]+50, y+4, { align:'right' });
+      doc.setFont('helvetica','normal');
+      y += 28;
+    });
+
+    y += 2; // small gap between groups
+  });
+
+  // Honorarium row (GL 5120)
+  if (honorTotal > 0) {
+    if (y > PH - 90) { doc.addPage(); y = M; }
+    // Group header
+    doc.setFillColor(220, 232, 246);
+    doc.rect(M, y-10, PW-2*M, 18, 'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(4,44,83);
+    doc.text('5120  —  Honorarium', colX[1], y);
+    doc.text('Subtotal: $' + honorTotal.toFixed(2), PW-M, y, { align:'right' });
+    y += 10;
+
+    rowNum++;
+    doc.setFillColor(rowNum%2===0 ? 255 : 247, rowNum%2===0 ? 255 : 249, rowNum%2===0 ? 255 : 252);
+    doc.rect(M, y-10, PW-2*M, 26, 'F');
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(80,80,80);
+    doc.text(String(rowNum), colX[0]+10, y+4, { align:'right' });
+    doc.setFont('helvetica','bold'); doc.setTextColor(30,30,30);
+    doc.text('Honorarium', colX[1], y);
+    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(110,110,110);
+    doc.text(`${honorDays} day${honorDays!==1?'s':''} × $${honorRate.toFixed(2)}/day`, colX[1], y+11);
+    doc.setFontSize(9); doc.setTextColor(30,30,30);
+    doc.text('—', colX[2], y+4);
+    doc.setFont('helvetica','bold'); doc.setTextColor(12,68,124);
+    doc.text('5120', colX[3], y);
+    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(110,110,110);
+    doc.text('Honorarium', colX[3], y+11);
+    doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(30,30,30);
+    doc.text('$'+honorTotal.toFixed(2), colX[4]+50, y+4, { align:'right' });
+    doc.setFont('helvetica','normal');
+    y += 28;
+  }
+
+  // Total row
+  y += 4;
+  doc.setFillColor(4, 44, 83);
+  doc.rect(PW-M-150, y-12, 150, 24, 'F');
+  doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(11);
+  doc.text('TOTAL: $' + grandTotal.toFixed(2), PW-M-8, y+3, { align:'right' });
+  y += 28;
+
+  // Receipt evidence section — always starts on a fresh page so no
+  // image gets cut off at the bottom of the line-items page
+  doc.addPage();
+  y = M;
+  doc.setTextColor(4,44,83); doc.setFont('helvetica','bold'); doc.setFontSize(13);
+  doc.text('Receipt Photo Evidence', M, y); y += 14;
+  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90,90,90);
+  doc.text('Original receipt images are reproduced below for verification purposes.', M, y); y += 18;
+
+  for (let i = 0; i < expenses.length; i++) {
+    const e = expenses[i];
+    if (!e.dataUrl) continue;
+
+    const isImageReceipt = e.dataUrl.startsWith('data:image');
+    const isPdfReceipt = e.dataUrl.startsWith('data:application/pdf');
+    if (!isImageReceipt && !isPdfReceipt) continue; // truly unrecognized format
+
+    const cs = e.code==='OTHER' ? 'Other' : (e.code||'—');
+    const label = `Receipt ${i+1}:  ${e.vendor||'—'}  ·  ${e.date||'—'}  ·  ${cs}  ·  $${parseFloat(e.amount||0).toFixed(2)}`;
+
+    // Gather one JPEG per page to embed — a photo receipt is just one
+    // "page"; a PDF receipt gets rendered to one JPEG per page via pdf.js.
+    let pageImages = [];
+    if (isImageReceipt) {
+      pageImages = [e.dataUrl];
+    } else {
+      try { pageImages = await getRenderedPdfPages(e.dataUrl, 2); }
+      catch { pageImages = []; }
+    }
+
+    if (pageImages.length === 0) {
+      if (y > PH - 60) { doc.addPage(); y = M; }
+      doc.setFillColor(240, 245, 252);
+      doc.rect(M, y, PW-2*M, 16, 'F');
+      doc.setTextColor(12,68,124); doc.setFont('helvetica','bold'); doc.setFontSize(9);
+      doc.text(label, M+5, y+10);
+      y += 20;
+      doc.setTextColor(160,160,160); doc.setFont('helvetica','normal'); doc.setFontSize(9);
+      doc.text('[Receipt file could not be rendered]', M, y+2); y += 22;
+      continue;
+    }
+
+    for (let p = 0; p < pageImages.length; p++) {
+      if (y > PH - 210) { doc.addPage(); y = M; }
+
+      doc.setFillColor(240, 245, 252);
+      doc.rect(M, y, PW-2*M, 16, 'F');
+      doc.setTextColor(12,68,124); doc.setFont('helvetica','bold'); doc.setFontSize(9);
+      doc.text(pageImages.length > 1 ? `${label}  (page ${p+1} of ${pageImages.length})` : label, M+5, y+10);
+      y += 20;
+
+      try {
+        const ih = await embedEvidenceImage(doc, pageImages[p], M, y, PW - 2*M, evidenceMaxH, evidenceQuality);
+        y += ih + 18;
+      } catch {
+        doc.setTextColor(160,160,160); doc.setFontSize(9);
+        doc.text('[Image could not be rendered]', M, y+12); y += 28;
+      }
+    }
+  }
+
+  // Page footers
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setFillColor(4, 44, 83);
+    doc.rect(0, PH-30, PW, 30, 'F');
+    doc.setTextColor(160, 190, 220); doc.setFont('helvetica','normal'); doc.setFontSize(8);
+    doc.text(`${num}  ·  Medical Department  ·  Approver: ${appr}  ·  Generated ${new Date().toLocaleDateString()}`, M, PH-11);
+    doc.text(`Page ${p} of ${totalPages}`, PW-M, PH-11, { align:'right' });
+  }
+
+  return doc;
+}
+
+const MAX_PDF_BYTES = 10 * 1024 * 1024; // ~10MB — a safe ceiling most email servers accept
+
+// Picks how hard to compress evidence images based on how many there
+// are, so a report with a couple of receipts stays sharp while a report
+// with dozens automatically compresses more to stay under the target.
+function chooseEvidenceQuality(receiptCount) {
+  if (receiptCount <= 5)  return { quality: 0.82, maxH: 280 };
+  if (receiptCount <= 12) return { quality: 0.65, maxH: 240 };
+  if (receiptCount <= 25) return { quality: 0.50, maxH: 200 };
+  return { quality: 0.35, maxH: 160 };
+}
+
+async function buildPDF() {
+  const embeddableCount = expenses.filter(e =>
+    e.dataUrl && (e.dataUrl.startsWith('data:image') || e.dataUrl.startsWith('data:application/pdf'))
+  ).length;
+
+  const tier = chooseEvidenceQuality(embeddableCount);
+  let doc = await buildPDFAtQuality(tier.quality, tier.maxH);
+  let sizeBytes = doc.output('blob').size;
+
+  // Safety net: if the chosen tier still isn't enough (an unusually large
+  // batch, or especially detailed photos), rebuild once more at the most
+  // aggressive setting rather than handing back an oversized PDF.
+  const isAlreadyMostAggressive = tier.quality === 0.35 && tier.maxH === 160;
+  if (sizeBytes > MAX_PDF_BYTES && !isAlreadyMostAggressive) {
+    doc = await buildPDFAtQuality(0.35, 160);
+    sizeBytes = doc.output('blob').size;
+  }
+
+  finalizePDF(doc, sizeBytes);
+}
+
+function finalizePDF(doc, sizeBytes) {
+  pdfDataUrl = doc.output('datauristring');
+
+  const sizeNote = document.getElementById('pdfSizeNote');
+  if (sizeNote) {
+    if (sizeBytes > MAX_PDF_BYTES) {
+      const mb = (sizeBytes / (1024*1024)).toFixed(1);
+      sizeNote.textContent = `⚠ This PDF is ${mb} MB, even after maximum compression — larger than the ~10 MB most email servers accept. Consider splitting receipts across two reports.`;
+      sizeNote.style.display = 'block';
+    } else {
+      sizeNote.style.display = 'none';
+    }
+  }
+
+  // On mobile, show Open PDF button immediately since download may not work
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  if (isMobile) {
+    try {
+      const byteStr = atob(pdfDataUrl.split(',')[1]);
+      const arr = new Uint8Array(byteStr.length);
+      for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
+      const blob = new Blob([arr], { type: 'application/pdf' });
+      const blobUrl = URL.createObjectURL(blob);
+      document.getElementById('pdfOpenLink').href = blobUrl;
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 120000);
+    } catch(e) {
+      document.getElementById('pdfOpenLink').href = pdfDataUrl;
+    }
+    document.getElementById('pdfOpenLink').style.display = 'inline-flex';
+    document.getElementById('mobileDownloadNote').style.display = 'block';
+  }
+
+  document.getElementById('pdfPreview').innerHTML =
+    `<iframe src="${pdfDataUrl}" style="width:100%;height:680px;border:none;display:block" title="Expense report preview"></iframe>`;
+}
+
+function loadImg(src) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = rej;
+    img.src = src;
+  });
+}
+
+/* ── PDF receipt rendering ────────────────────────────────────────
+   PDF-based receipts (hotel folios, emailed invoices, etc.) used to be
+   silently skipped from the "Receipt Photo Evidence" section, because
+   only data:image URLs were embedded there. This renders each page of
+   an uploaded PDF to a JPEG using pdf.js, so it can flow through the
+   exact same embedding code that already works for photo receipts. */
+/* ── EXIF orientation correction ─────────────────────────────────
+   Canvas drawImage() ignores EXIF orientation metadata, so photos taken
+   in certain phone orientations come out sideways or upside-down once
+   they're re-encoded — which happens both before AI analysis and again
+   when embedding evidence in the final PDF. These two helpers read the
+   orientation tag (verified against real EXIF-tagged JPEGs, all 8
+   values) and apply the matching canvas transform before drawing. */
+function getExifOrientation(dataUrl) {
+  try {
+    const base64 = dataUrl.split(',')[1];
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    if (bytes[0] !== 0xFF || bytes[1] !== 0xD8) return 1; // not a JPEG
+
+    let offset = 2;
+    while (offset < bytes.length - 1) {
+      if (bytes[offset] !== 0xFF) break;
+      const marker = bytes[offset + 1];
+      if (marker === 0xE1) {
+        const exifStart = offset + 4;
+        const header = String.fromCharCode(bytes[exifStart], bytes[exifStart+1], bytes[exifStart+2], bytes[exifStart+3]);
+        if (header !== 'Exif') { offset += 2 + (bytes[offset+2] << 8 | bytes[offset+3]); continue; }
+        const tiffStart = exifStart + 6;
+        const little = bytes[tiffStart] === 0x49;
+        const readU16 = (o) => little ? (bytes[o] | bytes[o+1] << 8) : (bytes[o] << 8 | bytes[o+1]);
+        const readU32 = (o) => little
+          ? (bytes[o] | bytes[o+1]<<8 | bytes[o+2]<<16 | bytes[o+3]<<24) >>> 0
+          : (bytes[o]<<24 | bytes[o+1]<<16 | bytes[o+2]<<8 | bytes[o+3]) >>> 0;
+        const ifdOffset = readU32(tiffStart + 4);
+        const dirStart = tiffStart + ifdOffset;
+        const numEntries = readU16(dirStart);
+        for (let e = 0; e < numEntries; e++) {
+          const entryOffset = dirStart + 2 + e * 12;
+          const tag = readU16(entryOffset);
+          if (tag === 0x0112) return readU16(entryOffset + 8);
+        }
+        return 1;
+      } else if (marker === 0xD8 || marker === 0xD9 || marker === 0x01 || (marker >= 0xD0 && marker <= 0xD7)) {
+        offset += 2;
+      } else {
+        offset += 2 + (bytes[offset+2] << 8 | bytes[offset+3]);
+      }
+    }
+  } catch {}
+  return 1; // default: no correction needed
+}
+
+function applyExifTransform(ctx, orientation, width, height) {
+  switch (orientation) {
+    case 2: ctx.transform(-1, 0, 0, 1, width, 0); break;
+    case 3: ctx.transform(-1, 0, 0, -1, width, height); break;
+    case 4: ctx.transform(1, 0, 0, -1, 0, height); break;
+    case 5: ctx.transform(0, 1, 1, 0, 0, 0); break;
+    case 6: ctx.transform(0, 1, -1, 0, height, 0); break;
+    case 7: ctx.transform(0, -1, -1, 0, height, width); break;
+    case 8: ctx.transform(0, -1, 1, 0, 0, width); break;
+    default: break; // 1 = normal, no transform needed
+  }
+}
+
+// Draws `img` onto a fresh canvas at logical size targetW x targetH
+// (as if orientation were normal), correcting for EXIF orientation so
+// the output always displays right-side-up. Shared by both the AI-
+// analysis image prep and the final PDF evidence embedding.
+function drawImageCorrected(img, dataUrl, targetW, targetH) {
+  const orientation = getExifOrientation(dataUrl);
+  const swap = orientation >= 5 && orientation <= 8;
+  const canvas = document.createElement('canvas');
+  canvas.width = swap ? targetH : targetW;
+  canvas.height = swap ? targetW : targetH;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (orientation > 1) applyExifTransform(ctx, orientation, targetW, targetH);
+  ctx.drawImage(img, 0, 0, targetW, targetH);
+  return canvas;
+}
+
+if (window.pdfjsLib) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
+async function renderPdfPagesToImages(pdfDataUrl, scale) {
+  const base64 = pdfDataUrl.split(',')[1];
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+  const images = [];
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const viewport = page.getViewport({ scale: scale || 2 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    images.push(canvas.toDataURL('image/jpeg', 0.85));
+  }
+  return images; // one JPEG data URL per PDF page
+}
+
+// Cache so the same PDF isn't re-rendered twice at the same resolution.
+const pdfRenderCache = {};
+async function getRenderedPdfPages(pdfDataUrl, scale) {
+  const key = scale + '_' + pdfDataUrl.length + '_' + pdfDataUrl.slice(-40);
+  if (pdfRenderCache[key]) return pdfRenderCache[key];
+  const pages = await renderPdfPagesToImages(pdfDataUrl, scale);
+  pdfRenderCache[key] = pages;
+  return pages;
+}
+
+// Shared by both photo receipts and rendered PDF pages — re-encodes via
+// canvas (fixes unsupported formats, downsizes large images, corrects
+// EXIF orientation) and draws into the PDF at the given position,
+// returning the height used. `quality` is adjustable so the final PDF
+// can be kept under a target file size (see buildPDF's size budget).
+async function embedEvidenceImage(doc, imgDataUrl, M, y, maxW, maxH, quality) {
+  const img = await loadImg(imgDataUrl);
+  const orientation = getExifOrientation(imgDataUrl);
+  const swap = orientation >= 5 && orientation <= 8;
+  const displayW = swap ? img.height : img.width;
+  const displayH = swap ? img.width : img.height;
+
+  const aspect = displayW / displayH;
+  let iw = maxW, ih = iw / aspect;
+  if (ih > maxH) { ih = maxH; iw = ih * aspect; }
+
+  const scale = Math.min(1, 1200 / Math.max(img.width, img.height));
+  const targetW = Math.round(img.width * scale);
+  const targetH = Math.round(img.height * scale);
+  const canvas = drawImageCorrected(img, imgDataUrl, targetW, targetH);
+  const jpegData = canvas.toDataURL('image/jpeg', quality);
+
+  doc.addImage(jpegData, 'JPEG', M, y, iw, ih);
+  return ih;
+}
+
+function downloadPDF() {
+  if (!pdfDataUrl) return;
+  bumpInvoiceCounter(); // so the next invoice auto-increments
+  const num = document.getElementById('invNum').value || 'invoice';
+  const filename = `${num.replace(/\s+/g,'-')}-medical-expense-report.pdf`;
+
+  // Detect mobile
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+  if (isMobile) {
+    // On mobile, convert data URI to blob and use object URL for better compatibility
+    try {
+      const byteStr = atob(pdfDataUrl.split(',')[1]);
+      const arr = new Uint8Array(byteStr.length);
+      for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
+      const blob = new Blob([arr], { type: 'application/pdf' });
+      const blobUrl = URL.createObjectURL(blob);
+
+      // Try download link first
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      // Also update the Open PDF button as fallback
+      const openLink = document.getElementById('pdfOpenLink');
+      openLink.href = blobUrl;
+      openLink.style.display = 'inline-flex';
+      document.getElementById('mobileDownloadNote').style.display = 'block';
+
+      // Clean up blob URL after a delay
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    } catch(e) {
+      // Final fallback — open data URI directly
+      const openLink = document.getElementById('pdfOpenLink');
+      openLink.href = pdfDataUrl;
+      openLink.style.display = 'inline-flex';
+      document.getElementById('mobileDownloadNote').style.display = 'block';
+    }
+  } else {
+    // Desktop — standard approach works fine
+    const a = document.createElement('a');
+    a.href = pdfDataUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+}
+
+/* ── New invoice reset ─────────────────────────────────────────── */
+function nextInvoiceNumber() {
+  let n = parseInt(storageGet('med_inv_counter') || '1', 10);
+  return 'INV-' + String(n).padStart(3, '0');
+}
+
+function bumpInvoiceCounter() {
+  let n = parseInt(storageGet('med_inv_counter') || '1', 10);
+  storageSet('med_inv_counter', String(n + 1));
+}
+
+function startNew() {
+  receipts = []; expenses = []; pdfDataUrl = null;
+  dbDelete('current_draft'); // finished with this report — clear saved draft
+  document.querySelectorAll('.analyze-error-banner').forEach(el => el.remove());
+  document.getElementById('invNum').value = nextInvoiceNumber();
+  document.getElementById('invDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('invTo').value = 'Kim Kranz';
+  document.getElementById('invPurpose').value = '';
+  if (document.getElementById('honorDays')) document.getElementById('honorDays').value = '';
+  if (document.getElementById('honorRate')) document.getElementById('honorRate').value = '';
+  if (document.getElementById('honorTotal')) document.getElementById('honorTotal').value = '';
+  document.getElementById('emailPanel').classList.add('hidden');
+  document.getElementById('pdfOpenLink').style.display = 'none';
+  document.getElementById('mobileDownloadNote').style.display = 'none';
+  document.getElementById('receiptGrid').innerHTML = '';
+  document.getElementById('receiptGrid').classList.add('hidden');
+  document.getElementById('step1Actions').style.display = 'none';
+  document.getElementById('fileInput').value = '';
+  goStep(1);
+}
+
+/* ── Utilities ─────────────────────────────────────────────────── */
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>
+</body>
+</html>
