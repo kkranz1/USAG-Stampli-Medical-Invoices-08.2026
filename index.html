@@ -775,6 +775,7 @@ table.exp-table input + input { margin-top: 4px; }
         <i class="ti ti-info-circle" style="vertical-align:-2px"></i>
         On mobile: tap <strong>Open PDF</strong> to view it, then use your browser's share/export button to save or print.
       </p>
+      <p id="pdfEvidenceNote" style="display:none;font-size:13px;line-height:1.5;border-radius:8px;padding:9px 13px;margin-top:10px"></p>
       <p id="pdfSizeNote" style="display:none;font-size:13px;color:var(--amber-800);background:var(--amber-50);border:1px solid var(--amber-400);border-radius:8px;padding:9px 13px;margin-top:10px;line-height:1.5"></p>
 
       <!-- Email panel -->
@@ -1041,7 +1042,14 @@ function saveDraft() {
         id: r.id, name: r.name, dataUrl: r.dataUrl,
         status: r.status, result: r.result || null
       })),
-      expenses: expenses,
+      // The image lives once, in `receipts`; expenses are re-linked by id on
+      // restore. (Storing it twice doubled the draft size and risked hitting
+      // the browser's storage quota, which silently lost the draft.)
+      expenses: expenses.map(e => {
+        if (!e.receiptId) return e;
+        const { dataUrl, ...rest } = e;
+        return rest;
+      }),
       form: {
         invNum: document.getElementById('invNum')?.value || '',
         invDate: document.getElementById('invDate')?.value || '',
@@ -1103,9 +1111,13 @@ function doRestoreDraft() {
 
   receipts = (draft.receipts || []).map(r => ({
     ...r,
-    file: { type: r.dataUrl?.startsWith('data:image') ? (r.dataUrl.match(/data:([^;]+)/)?.[1] || 'image/jpeg') : 'application/pdf' }
+    file: { type: isPdfUrl(r.dataUrl) ? 'application/pdf' : 'image/jpeg', name: r.name }
   }));
-  expenses = draft.expenses || [];
+  expenses = (draft.expenses || []).map(e => {
+    if (e.dataUrl) return e; // older drafts stored the image on the expense itself
+    const rcpt = receipts.find(r => r.id === e.receiptId);
+    return { ...e, dataUrl: rcpt ? rcpt.dataUrl : '' };
+  });
 
   const f = draft.form || {};
   if (f.invNum) document.getElementById('invNum').value = f.invNum;
@@ -1238,39 +1250,141 @@ function goStep(n) {
 }
 
 /* ── File handling ─────────────────────────────────────────────── */
-function handleFiles(files) {
-  Array.from(files).forEach(async (file) => {
-    let processedFile = file;
 
-    // True HEIC/HEIF files can't be decoded by most browsers (only
-    // Safari can). Convert them to a real JPEG here, at intake, using
-    // heic2any (WASM-based, works regardless of native browser support)
-    // so every downstream step — thumbnails, AI analysis, PDF embedding —
-    // only ever sees a genuine, correctly-labeled JPEG.
-    const looksHeic = /image\/hei[cf]/i.test(file.type) || /\.(heic|heif)$/i.test(file.name);
-    if (looksHeic && window.heic2any) {
+/* Every receipt is normalised at intake so that EVERY later step (thumbnail,
+   AI analysis, PDF evidence) sees the same thing: either an upright JPEG
+   ("data:image/jpeg") or a PDF ("data:application/pdf"). Previously the
+   original bytes were kept as-is, so a file whose MIME type was empty or
+   unusual (common with HEIC, some Android/scanner apps, emailed files)
+   could be read by the AI yet silently skipped when building the PDF. */
+function dataUrlKind(u) {
+  if (!u || typeof u !== 'string') return null;
+  const comma = u.indexOf(',');
+  if (comma < 0) return null;
+  const head = u.slice(0, comma).toLowerCase();
+  const b64 = u.slice(comma + 1, comma + 13);
+  if (head.startsWith('data:application/pdf') || head.startsWith('data:application/x-pdf') || b64.startsWith('JVBER')) return 'pdf';
+  if (head.startsWith('data:image')) return 'image';
+  // Empty / generic MIME type: identify by the first bytes (base64 signatures)
+  if (b64.startsWith('/9j/') || b64.startsWith('iVBOR') || b64.startsWith('UklGR') || b64.startsWith('R0lGOD') || b64.startsWith('Qk')) return 'image';
+  return null;
+}
+const isImageUrl = u => dataUrlKind(u) === 'image';
+const isPdfUrl   = u => dataUrlKind(u) === 'pdf';
+
+async function sniffFileKind(file) {
+  let buf;
+  try { buf = new Uint8Array(await file.slice(0, 32).arrayBuffer()); } catch { buf = new Uint8Array(0); }
+  const asc = (a, b) => String.fromCharCode(...buf.slice(a, b));
+  if (buf[0] === 0xFF && buf[1] === 0xD8) return 'jpeg';
+  if (buf[0] === 0x89 && asc(1, 4) === 'PNG') return 'png';
+  if (asc(0, 4) === '%PDF') return 'pdf';
+  if (asc(0, 3) === 'GIF') return 'gif';
+  if (asc(0, 4) === 'RIFF' && asc(8, 12) === 'WEBP') return 'webp';
+  if (asc(0, 2) === 'BM') return 'bmp';
+  if (asc(4, 8) === 'ftyp') {
+    const brand = asc(8, 12).toLowerCase();
+    if (/^(heic|heix|hevc|hevx|heim|heis|mif1|msf1)$/.test(brand)) return 'heic';
+    if (/^avi[fs]$/.test(brand)) return 'avif';
+  }
+  if ((buf[0] === 0x49 && buf[1] === 0x49 && buf[2] === 0x2A) || (buf[0] === 0x4D && buf[1] === 0x4D && buf[3] === 0x2A)) return 'tiff';
+  // Fall back to declared type / extension
+  const n = (file.name || '').toLowerCase(), t = (file.type || '').toLowerCase();
+  if (t === 'application/pdf' || /\.pdf$/.test(n)) return 'pdf';
+  if (/hei[cf]/.test(t) || /\.(heic|heif)$/.test(n)) return 'heic';
+  if (/^image\//.test(t) || /\.(jpe?g|png|gif|webp|bmp|jfif)$/.test(n)) return 'imageUnknown';
+  return null;
+}
+
+function readBlobAsDataUrl(blob) {
+  return new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => res(fr.result);
+    fr.onerror = () => rej(fr.error || new Error('Could not read file'));
+    fr.readAsDataURL(blob);
+  });
+}
+
+const INTAKE_MAX_PX = 2000;
+async function imageBlobToUprightJpeg(blob, mime) {
+  await autoOrientReady; // know whether the browser rotates EXIF photos by itself
+  const typed = new Blob([blob], { type: mime });
+  const url = await readBlobAsDataUrl(typed);
+  const img = await loadImg(url);
+  if (!img.width || !img.height) throw new Error('Image has no pixels');
+  const scale = Math.min(1, INTAKE_MAX_PX / Math.max(img.width, img.height));
+  const w = Math.max(1, Math.round(img.width * scale));
+  const h = Math.max(1, Math.round(img.height * scale));
+  const canvas = drawImageCorrected(img, url, w, h);
+  const out = canvas.toDataURL('image/jpeg', 0.9);
+  canvas.width = canvas.height = 0; // release canvas memory (matters on phones)
+  if (!out.startsWith('data:image/jpeg') || out.length < 200) throw new Error('Image could not be re-encoded');
+  return out;
+}
+
+async function normalizeUpload(file) {
+  const kind = await sniffFileKind(file);
+  if (kind === 'pdf') {
+    return { dataUrl: await readBlobAsDataUrl(new Blob([file], { type: 'application/pdf' })), type: 'application/pdf' };
+  }
+  const mimes = { jpeg:'image/jpeg', png:'image/png', gif:'image/gif', webp:'image/webp', bmp:'image/bmp', tiff:'image/tiff', avif:'image/avif', imageUnknown: file.type || 'image/jpeg' };
+  let blob = file, mime = mimes[kind];
+  if (kind === 'heic') {
+    mime = null;
+    if (window.heic2any) {
       try {
-        const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.88 });
-        const blob = Array.isArray(converted) ? converted[0] : converted;
-        processedFile = new File([blob], file.name.replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' });
-      } catch (e) {
-        console.warn('HEIC conversion failed, using original file as a fallback:', e);
-      }
+        const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 });
+        blob = Array.isArray(converted) ? converted[0] : converted;
+        mime = 'image/jpeg';
+      } catch (e) { console.warn('HEIC conversion failed:', e); }
     }
+    if (!mime) mime = 'image/heic'; // Safari can still decode it natively below
+  }
+  if (!mime) throw new Error('Unsupported file type. Please upload a photo (JPG, PNG, HEIC) or a PDF.');
+  try {
+    return { dataUrl: await imageBlobToUprightJpeg(blob, mime), type: 'image/jpeg' };
+  } catch (e) {
+    throw new Error(kind === 'heic'
+      ? 'This HEIC photo could not be converted. Please re-save it as a JPG (or take a screenshot of it) and upload that.'
+      : 'This image could not be read. Please re-save it as a JPG or PNG and upload that.');
+  }
+}
 
-    const reader = new FileReader();
-    reader.onload = ev => {
+function showIntakeProblems(problems) {
+  if (!problems.length) return;
+  let box = document.getElementById('intakeProblems');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'intakeProblems';
+    box.style.cssText = 'background:var(--amber-50);border:1px solid var(--amber-400);color:var(--amber-800);border-radius:10px;padding:10px 14px;margin:12px 0;font-size:13px;line-height:1.5';
+    const grid = document.getElementById('receiptGrid');
+    grid.parentNode.insertBefore(box, grid);
+  }
+  box.innerHTML = '<strong>Some files were not added:</strong><ul style="margin:6px 0 0 18px;padding:0">' +
+    problems.map(p => `<li><strong>${esc(p.name)}</strong> — ${esc(p.msg)}</li>`).join('') + '</ul>';
+}
+
+async function handleFiles(files) {
+  const list = Array.from(files);
+  const problems = [];
+  // Sequential, so receipts keep the order the user selected them in
+  for (const file of list) {
+    try {
+      const { dataUrl, type } = await normalizeUpload(file);
       receipts.push({
         id: Date.now() + '_' + Math.random(),
-        file: processedFile, name: file.name,
-        dataUrl: ev.target.result,
-        status: 'pending', result: null
+        file: { type, name: file.name }, name: file.name,
+        dataUrl, status: 'pending', result: null
       });
       renderReceiptGrid();
       saveDraft();
-    };
-    reader.readAsDataURL(processedFile);
-  });
+    } catch (e) {
+      problems.push({ name: file.name, msg: e.message });
+    }
+  }
+  const old = document.getElementById('intakeProblems');
+  if (old) old.remove();
+  showIntakeProblems(problems);
 }
 
 function renderReceiptGrid() {
@@ -1285,7 +1399,7 @@ function renderReceiptGrid() {
   actions.style.display = 'flex';
 
   grid.innerHTML = receipts.map(r => {
-    const isImg = r.dataUrl.startsWith('data:image');
+    const isImg = isImageUrl(r.dataUrl);
     const statusHtml =
       r.status === 'analyzing' ? `<div class="receipt-status-overlay"><div class="spinner"></div></div>` :
       r.status === 'done'      ? `<div class="receipt-status-overlay" style="background:rgba(59,109,17,0.5)"><i class="ti ti-check" style="font-size:26px;color:white"></i></div>` : '';
@@ -1535,7 +1649,7 @@ async function callAnthropicAPI(messages, system, maxTokens) {
    Claude vision works optimally at <=1568px on the long edge. */
 async function optimizeImage(dataUrl, fileType) {
   // Skip PDFs and already-small images
-  if (!dataUrl.startsWith('data:image')) return { dataUrl, mediaType: 'application/pdf' };
+  if (!isImageUrl(dataUrl)) return { dataUrl, mediaType: 'application/pdf' };
 
   try {
     const img = await loadImg(dataUrl);
@@ -1561,6 +1675,7 @@ async function optimizeImage(dataUrl, fileType) {
 
     const canvas = drawImageCorrected(img, dataUrl, width, height);
     const optimized = canvas.toDataURL('image/jpeg', 0.88);
+    canvas.width = canvas.height = 0; // free canvas memory
     return { dataUrl: optimized, mediaType: 'image/jpeg' };
   } catch {
     // If anything fails (e.g. undecodable format), fall back to original
@@ -1571,7 +1686,7 @@ async function optimizeImage(dataUrl, fileType) {
 }
 
 async function analyzeReceipt(r) {
-  const isImage = r.dataUrl.startsWith('data:image');
+  const isImage = isImageUrl(r.dataUrl);
 
   // Optimize image (resize + convert to JPEG) before sending
   let sendDataUrl = r.dataUrl;
@@ -1698,7 +1813,7 @@ function autoCode(vendor, desc) {
 /* ── Expense table (step 2) ────────────────────────────────────── */
 function renderExpenseTable() {
   document.getElementById('expenseBody').innerHTML = expenses.map((e, i) => {
-    const isImg = e.dataUrl && e.dataUrl.startsWith('data:image');
+    const isImg = isImageUrl(e.dataUrl);
     // ONLY the isMileage flag determines mileage rendering — NOT the 5055 code,
     // since 5055 also covers Uber, parking, gas, etc.
     const isMileage = !!e.isMileage;
@@ -1952,7 +2067,7 @@ function renderSummary() {
     </div>`;
 
     items.forEach(e => {
-      const isImg = e.dataUrl && e.dataUrl.startsWith('data:image');
+      const isImg = isImageUrl(e.dataUrl);
       html += `<div class="summary-item" style="padding-left:22px">
         ${isImg ? `<img class="thumb-sm" src="${e.dataUrl}" alt="">` : `<div class="thumb-placeholder-sm"><i class="ti ti-file" aria-hidden="true"></i></div>`}
         <div class="summary-details">
@@ -2210,57 +2325,86 @@ async function buildPDFAtQuality(evidenceQuality, evidenceMaxH) {
   doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90,90,90);
   doc.text('Original receipt images are reproduced below for verification purposes.', M, y); y += 18;
 
+  // Every expense gets an entry here — an image, or a visible placeholder
+  // saying why there isn't one. Nothing is skipped silently any more.
+  const evidenceReport = { total: 0, embedded: 0, problems: [] };
+  const FOOTER_CLEAR = 44;            // footer band is 30pt tall; leave air above it
+  const HEADER_H = 20, GAP_AFTER = 18;
+  const maxW = PW - 2*M;
+
+  const drawHeader = (label) => {
+    doc.setFillColor(240, 245, 252);
+    doc.rect(M, y, PW-2*M, 16, 'F');
+    doc.setTextColor(12,68,124); doc.setFont('helvetica','bold'); doc.setFontSize(9);
+    doc.text(label, M+5, y+10);
+    y += HEADER_H;
+  };
+  const drawMissing = (msg) => {
+    doc.setTextColor(176, 42, 42); doc.setFont('helvetica','normal'); doc.setFontSize(9);
+    doc.text(msg, M, y+2);
+    y += 22;
+  };
+
   for (let i = 0; i < expenses.length; i++) {
     const e = expenses[i];
-    if (!e.dataUrl) continue;
-
-    const isImageReceipt = e.dataUrl.startsWith('data:image');
-    const isPdfReceipt = e.dataUrl.startsWith('data:application/pdf');
-    if (!isImageReceipt && !isPdfReceipt) continue; // truly unrecognized format
-
     const cs = e.code==='OTHER' ? 'Other' : (e.code||'—');
     const label = `Receipt ${i+1}:  ${e.vendor||'—'}  ·  ${e.date||'—'}  ·  ${cs}  ·  $${parseFloat(e.amount||0).toFixed(2)}`;
+    evidenceReport.total++;
+    const problemName = `Receipt ${i+1} (${e.vendor||'no vendor'}${e.date ? ', ' + e.date : ''})`;
 
     // Gather one JPEG per page to embed — a photo receipt is just one
     // "page"; a PDF receipt gets rendered to one JPEG per page via pdf.js.
+    const kind = dataUrlKind(e.dataUrl);
     let pageImages = [];
-    if (isImageReceipt) {
-      pageImages = [e.dataUrl];
-    } else {
+    let failReason = '';
+    if (!e.dataUrl) failReason = 'no receipt file is attached to this expense';
+    else if (kind === 'image') pageImages = [e.dataUrl];
+    else if (kind === 'pdf') {
       try { pageImages = await getRenderedPdfPages(e.dataUrl, 2); }
-      catch { pageImages = []; }
-    }
+      catch (err) { console.warn('PDF render failed', err); }
+      if (!pageImages.length) failReason = 'the PDF receipt could not be rendered (it may be password-protected or damaged)';
+    } else failReason = 'the receipt file is in an unrecognized format';
 
-    if (pageImages.length === 0) {
-      if (y > PH - 60) { doc.addPage(); y = M; }
-      doc.setFillColor(240, 245, 252);
-      doc.rect(M, y, PW-2*M, 16, 'F');
-      doc.setTextColor(12,68,124); doc.setFont('helvetica','bold'); doc.setFontSize(9);
-      doc.text(label, M+5, y+10);
-      y += 20;
-      doc.setTextColor(160,160,160); doc.setFont('helvetica','normal'); doc.setFontSize(9);
-      doc.text('[Receipt file could not be rendered]', M, y+2); y += 22;
+    if (!pageImages.length) {
+      if (y + HEADER_H + 30 > PH - FOOTER_CLEAR) { doc.addPage(); y = M; }
+      drawHeader(label);
+      drawMissing('[Receipt image NOT included: ' + failReason + ']');
+      evidenceReport.problems.push(`${problemName}: ${failReason}`);
       continue;
     }
 
+    let allOk = true;
     for (let p = 0; p < pageImages.length; p++) {
-      if (y > PH - 210) { doc.addPage(); y = M; }
+      const pageLabel = pageImages.length > 1 ? `${label}  (page ${p+1} of ${pageImages.length})` : label;
 
-      doc.setFillColor(240, 245, 252);
-      doc.rect(M, y, PW-2*M, 16, 'F');
-      doc.setTextColor(12,68,124); doc.setFont('helvetica','bold'); doc.setFontSize(9);
-      doc.text(pageImages.length > 1 ? `${label}  (page ${p+1} of ${pageImages.length})` : label, M+5, y+10);
-      y += 20;
-
-      try {
-        const ih = await embedEvidenceImage(doc, pageImages[p], M, y, PW - 2*M, evidenceMaxH, evidenceQuality);
-        y += ih + 18;
-      } catch {
-        doc.setTextColor(160,160,160); doc.setFontSize(9);
-        doc.text('[Image could not be rendered]', M, y+12); y += 28;
+      // Prepare the image first so we know its real height. If it fails at the
+      // normal settings, retry once smaller before giving up.
+      let prepared = null;
+      try { prepared = await prepareEvidenceImage(pageImages[p], maxW, evidenceMaxH, evidenceQuality, 1200); }
+      catch (err1) {
+        try { prepared = await prepareEvidenceImage(pageImages[p], maxW, Math.min(evidenceMaxH, 200), 0.5, 700); }
+        catch (err2) { console.warn('Evidence image failed', err2); }
       }
+
+      // Break the page if header + image + gap + footer clearance won't fit
+      const needed = HEADER_H + (prepared ? prepared.ih : 30) + GAP_AFTER;
+      if (y + needed > PH - FOOTER_CLEAR) { doc.addPage(); y = M; }
+      drawHeader(pageLabel);
+
+      if (prepared) {
+        try {
+          doc.addImage(prepared.jpegData, 'JPEG', M, y, prepared.iw, prepared.ih);
+          y += prepared.ih + GAP_AFTER;
+          continue;
+        } catch (err) { console.warn('addImage failed', err); }
+      }
+      allOk = false;
+      drawMissing('[Receipt image NOT included: the image could not be processed]');
     }
+    if (allOk) evidenceReport.embedded++;
+    else evidenceReport.problems.push(`${problemName}: the image could not be processed`);
   }
+  doc._evidenceReport = evidenceReport;
 
   // Page footers
   const totalPages = doc.internal.getNumberOfPages();
@@ -2288,10 +2432,21 @@ function chooseEvidenceQuality(receiptCount) {
   return { quality: 0.35, maxH: 160 };
 }
 
+let buildSeq = 0;
 async function buildPDF() {
-  const embeddableCount = expenses.filter(e =>
-    e.dataUrl && (e.dataUrl.startsWith('data:image') || e.dataUrl.startsWith('data:application/pdf'))
-  ).length;
+  const mySeq = ++buildSeq; // if the user re-triggers a build, only the latest one is shown
+  try {
+    await buildPDFInner(mySeq);
+  } catch (err) {
+    console.error('PDF build failed', err);
+    if (mySeq !== buildSeq) return;
+    document.getElementById('pdfPreview').innerHTML =
+      `<div style="padding:1.25rem;color:var(--red-600);font-size:14px;line-height:1.5">⚠ The PDF could not be built (${esc(err.message || String(err))}). Go back one step and try again; if it keeps happening, remove the largest receipt photos and retry.</div>`;
+  }
+}
+
+async function buildPDFInner(mySeq) {
+  const embeddableCount = expenses.filter(e => dataUrlKind(e.dataUrl)).length;
 
   const tier = chooseEvidenceQuality(embeddableCount);
   let doc = await buildPDFAtQuality(tier.quality, tier.maxH);
@@ -2306,11 +2461,27 @@ async function buildPDF() {
     sizeBytes = doc.output('blob').size;
   }
 
+  if (mySeq !== buildSeq) return; // a newer build superseded this one
   finalizePDF(doc, sizeBytes);
 }
 
 function finalizePDF(doc, sizeBytes) {
   pdfDataUrl = doc.output('datauristring');
+
+  // Tell the user plainly whether every receipt image made it into the PDF
+  const evNote = document.getElementById('pdfEvidenceNote');
+  const rep = doc._evidenceReport;
+  if (evNote && rep) {
+    if (rep.problems.length === 0) {
+      evNote.style.cssText = 'display:block;font-size:13px;line-height:1.5;border-radius:8px;padding:9px 13px;margin-top:10px;background:var(--green-50, #EAF3DE);color:var(--green-800, #27500A);border:1px solid var(--green-400, #97C459)';
+      evNote.textContent = `✓ All ${rep.embedded} receipt image${rep.embedded!==1?'s':''} included in the PDF.`;
+    } else {
+      evNote.style.cssText = 'display:block;font-size:13px;line-height:1.5;border-radius:8px;padding:9px 13px;margin-top:10px;background:var(--red-50, #FCEBEB);color:var(--red-800, #791F1F);border:1px solid var(--red-400, #F09595)';
+      evNote.innerHTML = `<strong>⚠ ${rep.problems.length} of ${rep.total} receipt image${rep.total!==1?'s were':' was'} NOT included in the PDF:</strong><ul style="margin:6px 0 0 18px;padding:0">` +
+        rep.problems.map(m => `<li>${esc(m)}</li>`).join('') +
+        '</ul><div style="margin-top:6px">Each is marked in the PDF. Go back, remove that receipt, and re-upload it as a JPG or PDF.</div>';
+    }
+  }
 
   const sizeNote = document.getElementById('pdfSizeNote');
   if (sizeNote) {
@@ -2367,7 +2538,21 @@ function loadImg(src) {
    when embedding evidence in the final PDF. These two helpers read the
    orientation tag (verified against real EXIF-tagged JPEGs, all 8
    values) and apply the matching canvas transform before drawing. */
+/* Modern browsers (Chrome 81+, Safari 13.1+, Firefox 77+) rotate EXIF
+   photos themselves, both when displaying and when drawing to a canvas.
+   Applying our own rotation on top of that would rotate the photo TWICE, so
+   we test once, using a tiny 2x1 JPEG tagged "rotate 90°", whether this
+   browser does it automatically. If it does, we treat orientation as 1. */
+let browserAutoOrients = false;
+const autoOrientReady = new Promise(resolve => {
+  const probe = new Image();
+  probe.onload = () => { browserAutoOrients = (probe.width === 1 && probe.height === 2); resolve(browserAutoOrients); };
+  probe.onerror = () => resolve(false);
+  probe.src = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4QAiRXhpZgAATU0AKgAAAAgAAQESAAMAAAABAAYAAAAAAAD/2wBDAAIBAQEBAQIBAQECAgICAgQDAgICAgUEBAMEBgUGBgYFBgYGBwkIBgcJBwYGCAsICQoKCgoKBggLDAsKDAkKCgr/2wBDAQICAgICAgUDAwUKBwYHCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgr/wAARCAABAAIDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD4vooor+Uz/fw//9k=';
+});
+
 function getExifOrientation(dataUrl) {
+  if (browserAutoOrients) return 1;
   try {
     const base64 = dataUrl.split(',')[1];
     const binary = atob(base64);
@@ -2462,7 +2647,10 @@ async function renderPdfPagesToImages(pdfDataUrl, scale) {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     await page.render({ canvasContext: ctx, viewport }).promise;
     images.push(canvas.toDataURL('image/jpeg', 0.85));
+    canvas.width = canvas.height = 0; // free canvas memory
+    page.cleanup();
   }
+  try { pdf.destroy(); } catch {}
   return images; // one JPEG data URL per PDF page
 }
 
@@ -2476,13 +2664,13 @@ async function getRenderedPdfPages(pdfDataUrl, scale) {
   return pages;
 }
 
-// Shared by both photo receipts and rendered PDF pages — re-encodes via
-// canvas (fixes unsupported formats, downsizes large images, corrects
-// EXIF orientation) and draws into the PDF at the given position,
-// returning the height used. `quality` is adjustable so the final PDF
-// can be kept under a target file size (see buildPDF's size budget).
-async function embedEvidenceImage(doc, imgDataUrl, M, y, maxW, maxH, quality) {
+// Shared by both photo receipts and rendered PDF pages. Re-encodes via
+// canvas (fixes unsupported formats, downsizes large images, corrects EXIF
+// orientation) and returns the JPEG plus the size it will be drawn at, so the
+// caller can decide whether it fits on the current page BEFORE drawing it.
+async function prepareEvidenceImage(imgDataUrl, maxW, maxH, quality, maxPx) {
   const img = await loadImg(imgDataUrl);
+  if (!img.width || !img.height) throw new Error('empty image');
   const orientation = getExifOrientation(imgDataUrl);
   const swap = orientation >= 5 && orientation <= 8;
   const displayW = swap ? img.height : img.width;
@@ -2492,14 +2680,14 @@ async function embedEvidenceImage(doc, imgDataUrl, M, y, maxW, maxH, quality) {
   let iw = maxW, ih = iw / aspect;
   if (ih > maxH) { ih = maxH; iw = ih * aspect; }
 
-  const scale = Math.min(1, 1200 / Math.max(img.width, img.height));
-  const targetW = Math.round(img.width * scale);
-  const targetH = Math.round(img.height * scale);
+  const scale = Math.min(1, (maxPx || 1200) / Math.max(img.width, img.height));
+  const targetW = Math.max(1, Math.round(img.width * scale));
+  const targetH = Math.max(1, Math.round(img.height * scale));
   const canvas = drawImageCorrected(img, imgDataUrl, targetW, targetH);
   const jpegData = canvas.toDataURL('image/jpeg', quality);
-
-  doc.addImage(jpegData, 'JPEG', M, y, iw, ih);
-  return ih;
+  canvas.width = canvas.height = 0; // free canvas memory (important on phones with many receipts)
+  if (!jpegData.startsWith('data:image/jpeg') || jpegData.length < 500) throw new Error('encode failed');
+  return { jpegData, iw, ih };
 }
 
 function downloadPDF() {
