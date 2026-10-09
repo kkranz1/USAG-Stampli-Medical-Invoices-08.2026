@@ -754,17 +754,17 @@ table.exp-table input + input { margin-top: 4px; }
 
       <div class="alert alert-success">
         <i class="ti ti-circle-check" aria-hidden="true"></i>
-        <div>Your expense report PDF is ready. Download it and email it to Stampli for processing.</div>
+        <div id="pdfStatusText">Building your PDF…</div>
       </div>
 
       <div class="actions-bar" style="margin-top:0">
-        <button class="btn btn-primary btn-lg" onclick="downloadPDF()">
+        <button id="pdfDownloadBtn" class="btn btn-primary btn-lg" onclick="downloadPDF()" disabled>
           <i class="ti ti-download" aria-hidden="true"></i> Download PDF
         </button>
         <a id="pdfOpenLink" href="#" target="_blank" class="btn btn-lg" style="display:none">
           <i class="ti ti-external-link" aria-hidden="true"></i> Open PDF
         </a>
-        <button class="btn btn-email btn-lg" onclick="toggleEmailPanel()">
+        <button id="pdfEmailBtn" class="btn btn-email btn-lg" onclick="toggleEmailPanel()" disabled>
           <i class="ti ti-send" aria-hidden="true"></i> Email to Stampli
         </button>
         <button class="btn" onclick="startNew()">
@@ -964,7 +964,7 @@ function setApiKey(k) { storageSet('med_anthropic_key', k.trim()); }
 /* ── State ─────────────────────────────────────────────────────── */
 let receipts = [];
 let expenses = [];
-let pdfDataUrl = null;
+let pdfBlobUrl = null;   // object URL of the most recently BUILT pdf (null while a build is running)
 let savedName = '';
 
 /* ── Storage (localStorage as persistent store) ────────────────── */
@@ -1245,8 +1245,34 @@ function goStep(n) {
 
   if (n === 2) renderExpenseTable();
   if (n === 3) renderSummary();
-  if (n === 4) { populateEmail(); setTimeout(buildPDF, 250); }
+  if (n === 4) { populateEmail(); setPdfBusy(true); setTimeout(buildPDF, 250); }
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/* While a PDF is being (re)built, the old one must not be downloadable —
+   otherwise someone who goes back, adds or fixes a receipt, and returns to
+   this step can grab the previous version, which lacks the new images. */
+function setPdfBusy(busy, failed) {
+  const dl = document.getElementById('pdfDownloadBtn');
+  const em = document.getElementById('pdfEmailBtn');
+  const tx = document.getElementById('pdfStatusText');
+  const open = document.getElementById('pdfOpenLink');
+  if (busy) {
+    pdfBlobUrl = null;
+    if (dl) dl.disabled = true;
+    if (em) em.disabled = true;
+    if (open) open.style.display = 'none';
+    if (tx) tx.textContent = 'Building your PDF with ' + expenses.length + ' receipt' + (expenses.length!==1?'s':'') + '… please wait a few seconds before downloading.';
+    const prev = document.getElementById('pdfPreview');
+    if (prev) prev.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);font-size:14px">Building PDF…</div>';
+    ['pdfEvidenceNote','pdfSizeNote'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  } else if (failed) {
+    if (tx) tx.textContent = 'The PDF could not be built. Go back one step and try again.';
+  } else {
+    if (dl) dl.disabled = false;
+    if (em) em.disabled = false;
+    if (tx) tx.textContent = 'Your expense report PDF is ready. Download it and email it to Stampli for processing.';
+  }
 }
 
 /* ── File handling ─────────────────────────────────────────────── */
@@ -2216,6 +2242,10 @@ async function buildPDFAtQuality(evidenceQuality, evidenceMaxH) {
     groups[key].push(e);
   });
 
+  // Same order as the numbered line items, so "Receipt 7" below is line item #7
+  const orderedExpenses = [];
+  codeOrder.forEach(k => groups[k].forEach(e => orderedExpenses.push(e)));
+
   let rowNum = 0;
   codeOrder.forEach(key => {
     const items = groups[key];
@@ -2345,8 +2375,8 @@ async function buildPDFAtQuality(evidenceQuality, evidenceMaxH) {
     y += 22;
   };
 
-  for (let i = 0; i < expenses.length; i++) {
-    const e = expenses[i];
+  for (let i = 0; i < orderedExpenses.length; i++) {
+    const e = orderedExpenses[i];
     const cs = e.code==='OTHER' ? 'Other' : (e.code||'—');
     const label = `Receipt ${i+1}:  ${e.vendor||'—'}  ·  ${e.date||'—'}  ·  ${cs}  ·  $${parseFloat(e.amount||0).toFixed(2)}`;
     evidenceReport.total++;
@@ -2435,11 +2465,13 @@ function chooseEvidenceQuality(receiptCount) {
 let buildSeq = 0;
 async function buildPDF() {
   const mySeq = ++buildSeq; // if the user re-triggers a build, only the latest one is shown
+  setPdfBusy(true);
   try {
     await buildPDFInner(mySeq);
   } catch (err) {
     console.error('PDF build failed', err);
     if (mySeq !== buildSeq) return;
+    setPdfBusy(false, true);
     document.getElementById('pdfPreview').innerHTML =
       `<div style="padding:1.25rem;color:var(--red-600);font-size:14px;line-height:1.5">⚠ The PDF could not be built (${esc(err.message || String(err))}). Go back one step and try again; if it keeps happening, remove the largest receipt photos and retry.</div>`;
   }
@@ -2466,7 +2498,11 @@ async function buildPDFInner(mySeq) {
 }
 
 function finalizePDF(doc, sizeBytes) {
-  pdfDataUrl = doc.output('datauristring');
+  // Blob URL instead of a giant data: URL — works for any size, and phones
+  // show a blob PDF properly (data: URLs in iframes often show page 1 only).
+  if (pdfBlobUrl) { try { URL.revokeObjectURL(pdfBlobUrl); } catch {} }
+  pdfBlobUrl = URL.createObjectURL(doc.output('blob'));
+  setPdfBusy(false);
 
   // Tell the user plainly whether every receipt image made it into the PDF
   const evNote = document.getElementById('pdfEvidenceNote');
@@ -2497,23 +2533,13 @@ function finalizePDF(doc, sizeBytes) {
   // On mobile, show Open PDF button immediately since download may not work
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
   if (isMobile) {
-    try {
-      const byteStr = atob(pdfDataUrl.split(',')[1]);
-      const arr = new Uint8Array(byteStr.length);
-      for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
-      const blob = new Blob([arr], { type: 'application/pdf' });
-      const blobUrl = URL.createObjectURL(blob);
-      document.getElementById('pdfOpenLink').href = blobUrl;
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 120000);
-    } catch(e) {
-      document.getElementById('pdfOpenLink').href = pdfDataUrl;
-    }
+    document.getElementById('pdfOpenLink').href = pdfBlobUrl;
     document.getElementById('pdfOpenLink').style.display = 'inline-flex';
     document.getElementById('mobileDownloadNote').style.display = 'block';
   }
 
   document.getElementById('pdfPreview').innerHTML =
-    `<iframe src="${pdfDataUrl}" style="width:100%;height:680px;border:none;display:block" title="Expense report preview"></iframe>`;
+    `<iframe src="${pdfBlobUrl}" style="width:100%;height:680px;border:none;display:block" title="Expense report preview"></iframe>`;
 }
 
 function loadImg(src) {
@@ -2691,55 +2717,26 @@ async function prepareEvidenceImage(imgDataUrl, maxW, maxH, quality, maxPx) {
 }
 
 function downloadPDF() {
-  if (!pdfDataUrl) return;
+  if (!pdfBlobUrl) return; // still building — the button is disabled, but be safe
   bumpInvoiceCounter(); // so the next invoice auto-increments
   const num = document.getElementById('invNum').value || 'invoice';
   const filename = `${num.replace(/\s+/g,'-')}-medical-expense-report.pdf`;
-
-  // Detect mobile
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
+  const a = document.createElement('a');
+  a.href = pdfBlobUrl;
+  a.download = filename;
+  if (isMobile) a.target = '_blank';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
   if (isMobile) {
-    // On mobile, convert data URI to blob and use object URL for better compatibility
-    try {
-      const byteStr = atob(pdfDataUrl.split(',')[1]);
-      const arr = new Uint8Array(byteStr.length);
-      for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
-      const blob = new Blob([arr], { type: 'application/pdf' });
-      const blobUrl = URL.createObjectURL(blob);
-
-      // Try download link first
-      const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = filename;
-      a.target = '_blank';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-
-      // Also update the Open PDF button as fallback
-      const openLink = document.getElementById('pdfOpenLink');
-      openLink.href = blobUrl;
-      openLink.style.display = 'inline-flex';
-      document.getElementById('mobileDownloadNote').style.display = 'block';
-
-      // Clean up blob URL after a delay
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
-    } catch(e) {
-      // Final fallback — open data URI directly
-      const openLink = document.getElementById('pdfOpenLink');
-      openLink.href = pdfDataUrl;
-      openLink.style.display = 'inline-flex';
-      document.getElementById('mobileDownloadNote').style.display = 'block';
-    }
-  } else {
-    // Desktop — standard approach works fine
-    const a = document.createElement('a');
-    a.href = pdfDataUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    // Also keep the Open PDF button as a fallback
+    const openLink = document.getElementById('pdfOpenLink');
+    openLink.href = pdfBlobUrl;
+    openLink.style.display = 'inline-flex';
+    document.getElementById('mobileDownloadNote').style.display = 'block';
   }
 }
 
@@ -2755,7 +2752,7 @@ function bumpInvoiceCounter() {
 }
 
 function startNew() {
-  receipts = []; expenses = []; pdfDataUrl = null;
+  receipts = []; expenses = []; pdfBlobUrl = null;
   dbDelete('current_draft'); // finished with this report — clear saved draft
   document.querySelectorAll('.analyze-error-banner').forEach(el => el.remove());
   document.getElementById('invNum').value = nextInvoiceNumber();
