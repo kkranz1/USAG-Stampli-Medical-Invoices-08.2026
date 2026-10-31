@@ -635,8 +635,9 @@ table.exp-table input + input { margin-top: 4px; }
 
         <div class="alert alert-info" style="margin-bottom:1rem">
           <i class="ti ti-sparkles" aria-hidden="true"></i>
-          <div>AI has pre-filled all fields below. Review each line, correct any errors, and assign a GL code to any items marked <strong>needs code</strong>.</div>
+          <div>AI has pre-filled all fields below. <strong>Review each line and fix anything that looks off.</strong> Assign a GL code to any items marked <strong>needs code</strong>, and check any lines with a yellow <strong>double-check</strong> note.</div>
         </div>
+        <div id="codeFlagSummary" style="display:none"></div>
 
         <div class="table-wrap">
           <table class="exp-table">
@@ -663,7 +664,7 @@ table.exp-table input + input { margin-top: 4px; }
 
         <div class="actions-bar">
           <button class="btn" onclick="goStep(1)"><i class="ti ti-arrow-left" aria-hidden="true"></i> Back</button>
-          <button class="btn btn-primary" onclick="goStep(3)">Continue to invoice details <i class="ti ti-arrow-right" aria-hidden="true"></i></button>
+          <button class="btn btn-primary" onclick="continueToDetails()">Continue to invoice details <i class="ti ti-arrow-right" aria-hidden="true"></i></button>
         </div>
       </div>
     </div>
@@ -1585,7 +1586,8 @@ async function analyzeAll() {
     if (!entry || !entry.result) continue;
     const { r, result } = entry;
     r.result = result;
-    const code = result.isMileage ? '5055' : autoCode(result.vendor, result.description);
+    const assessed = assessCode(result);
+    const code = assessed.code;
 
     const currency = (result.currency || 'USD').toUpperCase();
     const isForeign = currency !== 'USD' && !result.isMileage;
@@ -1606,6 +1608,7 @@ async function analyzeAll() {
 
     expenses.push({
       receiptId: r.id, dataUrl: r.dataUrl,
+      codeFlag: assessed.flag, codeConfirmed: false,
       vendor: result.vendor || '', description: result.description || '',
       date: result.date || '', amount: usdAmount,
       code: code || '', otherDesc: '',
@@ -1756,7 +1759,16 @@ async function analyzeReceipt(r) {
 
   // SINGLE API call: classify AND extract in one pass (previously two calls)
   const system = `You are an expert at reading expense documents. First classify the image, then extract data. Respond ONLY with a valid JSON object, no markdown, no backticks:
-{"doc_type":"receipt|map|mileage_log","vendor":"store or business name (for receipts)","description":"brief description of purchase or trip","date":"YYYY-MM-DD or empty string","amount":"numeric total paid e.g. 42.75 (for receipts only; empty for maps)","currency":"ISO 4217 code e.g. USD, EUR, GBP, JPY, CAD, MXN","currency_evidence":"brief note on how currency was determined","category_hint":"hotel|meal|travel|supplies|phone|mileage|other","miles":"numeric miles as decimal e.g. 47.3 (ONLY for maps/mileage logs; empty otherwise)","origin":"trip start location (maps only)","destination":"trip end location (maps only)","dual_receipt_note":"brief note if two related receipts were in one photo; empty otherwise"}
+{"doc_type":"receipt|map|mileage_log","vendor":"store or business name (for receipts)","description":"brief description of purchase or trip","date":"YYYY-MM-DD or empty string","amount":"numeric total paid e.g. 42.75 (for receipts only; empty for maps)","currency":"ISO 4217 code e.g. USD, EUR, GBP, JPY, CAD, MXN","currency_evidence":"brief note on how currency was determined","category_hint":"hotel|meal|travel|supplies|phone|mileage|other","category_confidence":"high|medium|low","category_reason":"a few words on what you based the category on","miles":"numeric miles as decimal e.g. 47.3 (ONLY for maps/mileage logs; empty otherwise)","origin":"trip start location (maps only)","destination":"trip end location (maps only)","dual_receipt_note":"brief note if two related receipts were in one photo; empty otherwise"}
+
+Category guide for category_hint — choose the best fit for what was actually purchased, not just the store name (a "Target" receipt for a restaurant meal is a meal):
+- hotel: lodging (hotels, Airbnb, resort fees)
+- meal: food and drink (restaurants, cafes, food delivery, snacks)
+- travel: transportation (rideshare, taxi, parking, gas, rental car, airfare, baggage fees, tolls)
+- supplies: retail, pharmacy, office or medical supplies
+- phone: international phone plans, roaming, SIM cards
+- other: anything that fits none of the above
+category_confidence: "high" if the category is clear; "medium" if it is likely; "low" if the receipt could reasonably fit two categories, the items are unclear, or you cannot tell what was bought. Use "low" only when you genuinely cannot tell; if the category is reasonably clear, answer "high".
 
 Classification rules:
 - "map": Google Maps, Apple Maps, or any navigation app screenshot showing a route with a distance (e.g. "47.3 mi")
@@ -1864,6 +1876,94 @@ function autoCode(vendor, desc) {
   return null;
 }
 
+/* ── GL code confidence ────────────────────────────────────────────
+   The GL code used to come ONLY from keyword matching on the vendor name,
+   so "National" (a gym) could be coded as a car rental. The AI also reads
+   the receipt and returns its own category and how sure it is. We compare
+   the two and flag lines where they disagree or the AI is unsure, so the
+   user knows which lines most need a second look. */
+const HINT_TO_CODE = { hotel:'5020', meal:'5030', travel:'5055', supplies:'5590', phone:'5510', mileage:'5055' };
+const glName = c => (GL_CODES[c] || c).replace(/\s*\(.*\)\s*$/, '');  // short label, e.g. "Travel"
+
+function assessCode(result) {
+  if (result.isMileage) return { code: '5055', flag: null };
+  const ruleCode = autoCode(result.vendor, result.description) || '';
+  const hint = String(result.category_hint || '').toLowerCase().trim();
+  const aiCode = HINT_TO_CODE[hint] || '';
+  const conf = String(result.category_confidence || 'medium').toLowerCase().trim();
+  const why = result.category_reason ? ' (' + result.category_reason + ')' : '';
+
+  if (ruleCode && aiCode) {
+    if (ruleCode === aiCode) {
+      return { code: ruleCode, flag: conf === 'low'
+        ? { level: 'check', reason: 'The AI was not certain about this category' + why + '.' } : null };
+    }
+    return { code: ruleCode, flag: { level: 'check', alt: aiCode,
+      reason: `The vendor name suggests ${ruleCode} ${glName(ruleCode)}, but the receipt itself looks like ${aiCode} ${glName(aiCode)}${why}.` } };
+  }
+  if (ruleCode && !aiCode) {
+    // The vendor match found a code and the AI offers no competing category — trust it
+    return { code: ruleCode, flag: null };
+  }
+  if (!ruleCode && aiCode) {
+    if (conf === 'low') {
+      return { code: '', flag: { level: 'check', alt: aiCode,
+        reason: `The AI is unsure — its best guess is ${aiCode} ${glName(aiCode)}${why}.` } };
+    }
+    // No vendor match: a confident AI category is used as-is; only a "medium" one asks for confirmation
+    if (conf === 'high') return { code: aiCode, flag: null };
+    return { code: aiCode, flag: { level: 'suggested',
+      reason: `No vendor match, so the AI chose ${aiCode} ${glName(aiCode)} from the receipt${why}.` } };
+  }
+  return { code: '', flag: null }; // nothing to go on — shows "needs code"
+}
+
+/* Flagged lines must be confirmed (or edited) before moving on */
+let flagWarned = false;
+const openFlags = () => expenses.map((e, i) => ({ e, i })).filter(x => x.e.codeFlag && !x.e.codeConfirmed && !x.e.isMileage);
+
+function confirmCode(i) {
+  expenses[i].codeConfirmed = true;
+  flagWarned = false;
+  renderExpenseTable();
+  saveDraft();
+}
+
+function useAltCode(i) {
+  const e = expenses[i];
+  if (!e.codeFlag || !e.codeFlag.alt) return;
+  e.code = e.codeFlag.alt;
+  e.codeConfirmed = true;
+  flagWarned = false;
+  renderExpenseTable();
+  saveDraft();
+}
+
+function renderFlagSummary() {
+  const el = document.getElementById('codeFlagSummary');
+  if (!el) return;
+  const n = openFlags().length;
+  if (!n) { el.style.display = 'none'; return; }
+  const strong = flagWarned;
+  el.style.cssText = `display:flex;align-items:center;gap:10px;font-size:13.5px;line-height:1.5;border-radius:10px;padding:10px 14px;margin-bottom:1rem;` +
+    (strong ? 'background:var(--red-50);color:var(--red-800);border:1px solid #F09595' : 'background:var(--amber-50);color:var(--amber-800);border:1px solid var(--amber-400)');
+  el.innerHTML = `<i class="ti ti-alert-triangle" style="font-size:20px;flex-shrink:0"></i><div><strong>${n} line${n!==1?'s are':' is'} flagged for a closer look.</strong> ` +
+    (strong ? 'Please confirm or change each flagged code. Press Continue again only if you have checked them.'
+            : 'Where the AI was unsure or disagreed with the vendor-name match, you’ll see a yellow note under the line. Confirm or change the code on each one.') + '</div>';
+}
+
+function continueToDetails() {
+  if (openFlags().length && !flagWarned) {
+    flagWarned = true;
+    renderFlagSummary();
+    const first = document.getElementById('flag-row-' + openFlags()[0].i);
+    (first || document.getElementById('codeFlagSummary')).scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+  flagWarned = false;
+  goStep(3);
+}
+
 /* ── Expense table (step 2) ────────────────────────────────────── */
 function renderExpenseTable() {
   document.getElementById('expenseBody').innerHTML = expenses.map((e, i) => {
@@ -1934,6 +2034,19 @@ function renderExpenseTable() {
         </div>
       </td></tr>` : '';
 
+    // Flagged GL code — shown under the row until the user confirms or changes it
+    const cf = e.codeFlag;
+    const codeStrip = (cf && !isMileage && !e.codeConfirmed) ? `
+      <tr class="fx-row" id="flag-row-${i}"><td></td><td colspan="5">
+        <div style="background:var(--amber-50);border:1px solid #FAC775;border-radius:8px;padding:8px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;margin:2px 0 6px">
+          <i class="ti ti-alert-triangle" style="font-size:16px;color:var(--amber-600);flex-shrink:0"></i>
+          <span style="font-weight:600;color:var(--amber-800)">${cf.level === 'suggested' ? 'Code chosen by AI — please confirm:' : 'Double-check this GL code:'}</span>
+          <span style="color:var(--text);flex:1;min-width:200px">${esc(cf.reason)}</span>
+          ${cf.alt && cf.alt !== e.code ? `<button onclick="useAltCode(${i})" style="background:white;border:1px solid var(--border-mid);border-radius:6px;padding:3px 10px;font-size:12px;font-family:inherit;cursor:pointer;color:var(--blue-600)">Use ${cf.alt} – ${esc(glName(cf.alt))}</button>` : ''}
+          ${e.code ? `<button onclick="confirmCode(${i})" style="background:var(--green-600);border:none;border-radius:6px;padding:4px 12px;font-size:12px;font-family:inherit;cursor:pointer;color:white;font-weight:600"><i class="ti ti-check" style="vertical-align:-1px"></i> Keep ${e.code === 'OTHER' ? 'Other' : e.code}</button>` : ''}
+        </div>
+      </td></tr>` : '';
+
     return `<tr>
       <td>${isImg ? `<img class="thumb-sm" src="${e.dataUrl}" alt="">` : `<div class="thumb-placeholder-sm"><i class="ti ti-${isMileage?'map-pin':'file'}" aria-hidden="true"></i></div>`}</td>
       <td>${vendorDescCell}</td>
@@ -1947,6 +2060,7 @@ function renderExpenseTable() {
           ).join('')}
         </select>
         ${e.code && e.code!=='OTHER' ? `<span class="gl-badge gl-badge-coded">${e.code}</span>` : ''}
+        ${e.codeFlag && e.codeConfirmed ? `<span class="gl-badge gl-badge-coded" title="You confirmed this code">✓ checked</span>` : ''}
         ${!e.code ? `<span class="gl-badge gl-badge-uncoded">needs code</span>` : ''}
         ${e.code==='OTHER' ? `<input value="${esc(e.otherDesc)}" onchange="upd(${i},'otherDesc',this.value)" placeholder="Describe this expense..." style="margin-top:5px">` : ''}
       </td>
@@ -1955,8 +2069,9 @@ function renderExpenseTable() {
           <i class="ti ti-trash" aria-hidden="true"></i>
         </button>
       </td>
-    </tr>${fxStrip}${dualStrip}`;
+    </tr>${codeStrip}${fxStrip}${dualStrip}`;
   }).join('');
+  renderFlagSummary();
   refreshTotal();
 }
 
@@ -1967,6 +2082,7 @@ function upd(i, field, val) {
     // We do NOT auto-flag rows switched TO 5055 as mileage, because 5055
     // also covers regular travel expenses (Uber, parking, gas, baggage).
     if (val !== '5055') expenses[i].isMileage = false;
+    if (expenses[i].codeFlag) { expenses[i].codeConfirmed = true; flagWarned = false; }
     renderExpenseTable();
   }
   if (field === 'amount') renderExpenseTable();
