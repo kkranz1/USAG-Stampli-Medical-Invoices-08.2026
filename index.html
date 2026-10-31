@@ -587,6 +587,13 @@ table.exp-table input + input { margin-top: 4px; }
 
         <div id="receiptGrid" class="receipt-grid hidden"></div>
 
+        <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <button class="btn" id="honorOnlyBtn" onclick="skipToHonorarium()">
+            <i class="ti ti-cash" aria-hidden="true"></i> No receipts — honorarium only
+          </button>
+          <span style="font-size:13px;color:var(--text-muted)">For athletes being paid an honorarium with no expenses to reimburse.</span>
+        </div>
+
         <div class="actions-bar" id="step1Actions" style="display:none">
           <button class="btn btn-primary btn-lg" id="analyzeBtn" onclick="analyzeAll()">
             <i class="ti ti-cpu" aria-hidden="true"></i> Analyze all receipts with AI
@@ -712,7 +719,7 @@ table.exp-table input + input { margin-top: 4px; }
 
       <!-- Honorarium -->
       <div class="card">
-        <div class="card-title"><i class="ti ti-cash" aria-hidden="true"></i> Honorarium <span style="font-size:12px;font-weight:400;color:var(--text-muted);margin-left:4px">GL Code 5120 — optional</span></div>
+        <div class="card-title"><i class="ti ti-cash" aria-hidden="true"></i> Honorarium <span style="font-size:12px;font-weight:400;color:var(--text-muted);margin-left:4px">GL Code 5120 — <span id="honorOptionalLabel">optional</span></span></div>
         <div class="meta-grid cols-3" style="align-items:end">
           <div class="field">
             <label>Number of days</label>
@@ -741,9 +748,10 @@ table.exp-table input + input { margin-top: 4px; }
         </div>
       </div>
 
+      <p id="generateError" style="display:none;font-size:13px;color:var(--red-800);background:var(--red-50);border:1px solid var(--red-400, #F09595);border-radius:8px;padding:9px 13px;margin:0 0 12px;line-height:1.5"></p>
       <div class="actions-bar">
-        <button class="btn" onclick="goStep(2)"><i class="ti ti-arrow-left" aria-hidden="true"></i> Back</button>
-        <button class="btn btn-success btn-lg" onclick="goStep(4)">
+        <button class="btn" onclick="goStep(expenses.length ? 2 : 1)"><i class="ti ti-arrow-left" aria-hidden="true"></i> Back</button>
+        <button class="btn btn-success btn-lg" onclick="tryGenerate()">
           <i class="ti ti-file-export" aria-hidden="true"></i> Generate PDF Invoice
         </button>
       </div>
@@ -1074,7 +1082,7 @@ function showSaveIndicator() {
 
 async function restoreDraft() {
   const draft = await dbGet('current_draft');
-  if (!draft || (!draft.receipts?.length && !draft.expenses?.length)) return false;
+  if (!draft || (!draft.receipts?.length && !draft.expenses?.length && !(parseFloat(draft.form?.honorDays) > 0 && parseFloat(draft.form?.honorRate) > 0))) return false;
 
   const savedDate = new Date(draft.savedAt);
   const ageHours = (Date.now() - savedDate) / 3.6e6;
@@ -1132,7 +1140,9 @@ function doRestoreDraft() {
   document.getElementById('resumeBanner')?.remove();
 
   // Land on the right step: if expenses exist, go to review; else stay on upload
-  if (expenses.length > 0) goStep(2); else goStep(1);
+  if (expenses.length > 0) goStep(2);
+  else if (getHonorariumTotal() > 0) goStep(3);
+  else goStep(1);
 }
 
 async function discardDraft() {
@@ -1244,9 +1254,27 @@ function goStep(n) {
   });
 
   if (n === 2) renderExpenseTable();
-  if (n === 3) renderSummary();
+  if (n === 3) { renderSummary(); const ol = document.getElementById('honorOptionalLabel'); if (ol) ol.textContent = expenses.length ? 'optional' : 'required (no receipts)'; const ge = document.getElementById('generateError'); if (ge) ge.style.display = 'none'; }
   if (n === 4) { populateEmail(); setPdfBusy(true); setTimeout(buildPDF, 250); }
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/* Honorarium-only reports: no receipts, just days × daily rate */
+function skipToHonorarium() {
+  goStep(3);
+  setTimeout(() => document.getElementById('honorDays')?.focus(), 300);
+}
+
+function tryGenerate() {
+  const err = document.getElementById('generateError');
+  if (expenses.length === 0 && getHonorariumTotal() <= 0) {
+    err.textContent = 'There is nothing to invoice yet. Enter the number of days and daily rate for the honorarium above, or go back and upload receipts.';
+    err.style.display = 'block';
+    document.getElementById('honorDays')?.focus();
+    return;
+  }
+  err.style.display = 'none';
+  goStep(4);
 }
 
 /* While a PDF is being (re)built, the old one must not be downloadable —
@@ -1262,7 +1290,7 @@ function setPdfBusy(busy, failed) {
     if (dl) dl.disabled = true;
     if (em) em.disabled = true;
     if (open) open.style.display = 'none';
-    if (tx) tx.textContent = 'Building your PDF with ' + expenses.length + ' receipt' + (expenses.length!==1?'s':'') + '… please wait a few seconds before downloading.';
+    if (tx) tx.textContent = (expenses.length ? 'Building your PDF with ' + expenses.length + ' receipt' + (expenses.length!==1?'s':'') : 'Building your PDF') + '… please wait a few seconds before downloading.';
     const prev = document.getElementById('pdfPreview');
     if (prev) prev.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);font-size:14px">Building PDF…</div>';
     ['pdfEvidenceNote','pdfSizeNote'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
@@ -2137,8 +2165,13 @@ function populateEmail() {
   const expTotal = expenses.reduce((s,e) => s+(parseFloat(e.amount)||0), 0);
   const grand = expTotal + honorTotal;
   document.getElementById('emailSubject').value = `Expense Report ${num}${purp?' – '+purp:''}`;
-  document.getElementById('emailBody').value =
-    `Hi,\n\nPlease find attached expense report ${num}${purp?' for '+purp:''}.\n\nExpenses total: $${expTotal.toFixed(2)}${honorTotal>0?'\nHonorarium (5120): $'+honorTotal.toFixed(2):''}\nGrand total: $${grand.toFixed(2)}\nSubmitted by: ${name||'[name]'}\nDepartment: Medical\nApprover: ${appr}\n\nReceipt photos are embedded in the PDF for your review.\n\nThank you.`;
+  const lines = [`Hi,`, '', `Please find attached expense report ${num}${purp?' for '+purp:''}.`, ''];
+  if (expenses.length) lines.push(`Expenses total: $${expTotal.toFixed(2)}`);
+  if (honorTotal > 0) lines.push(`Honorarium (5120): $${honorTotal.toFixed(2)}`);
+  lines.push(`Grand total: $${grand.toFixed(2)}`, `Submitted by: ${name||'[name]'}`, `Department: Medical`, `Approver: ${appr}`);
+  if (expenses.length) lines.push('', 'Receipt photos are embedded in the PDF for your review.');
+  lines.push('', 'Thank you.');
+  document.getElementById('emailBody').value = lines.join('\n');
 }
 
 function toggleEmailPanel() {
@@ -2348,12 +2381,14 @@ async function buildPDFAtQuality(evidenceQuality, evidenceMaxH) {
 
   // Receipt evidence section — always starts on a fresh page so no
   // image gets cut off at the bottom of the line-items page
-  doc.addPage();
-  y = M;
-  doc.setTextColor(4,44,83); doc.setFont('helvetica','bold'); doc.setFontSize(13);
-  doc.text('Receipt Photo Evidence', M, y); y += 14;
-  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90,90,90);
-  doc.text('Original receipt images are reproduced below for verification purposes.', M, y); y += 18;
+  if (expenses.length > 0) {   // honorarium-only reports have no receipt pages
+    doc.addPage();
+    y = M;
+    doc.setTextColor(4,44,83); doc.setFont('helvetica','bold'); doc.setFontSize(13);
+    doc.text('Receipt Photo Evidence', M, y); y += 14;
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90,90,90);
+    doc.text('Original receipt images are reproduced below for verification purposes.', M, y); y += 18;
+  }
 
   // Every expense gets an entry here — an image, or a visible placeholder
   // saying why there isn't one. Nothing is skipped silently any more.
@@ -2507,7 +2542,8 @@ function finalizePDF(doc, sizeBytes) {
   // Tell the user plainly whether every receipt image made it into the PDF
   const evNote = document.getElementById('pdfEvidenceNote');
   const rep = doc._evidenceReport;
-  if (evNote && rep) {
+  if (evNote && rep && rep.total === 0) { evNote.style.display = 'none'; }
+  else if (evNote && rep) {
     if (rep.problems.length === 0) {
       evNote.style.cssText = 'display:block;font-size:13px;line-height:1.5;border-radius:8px;padding:9px 13px;margin-top:10px;background:var(--green-50, #EAF3DE);color:var(--green-800, #27500A);border:1px solid var(--green-400, #97C459)';
       evNote.textContent = `✓ All ${rep.embedded} receipt image${rep.embedded!==1?'s':''} included in the PDF.`;
